@@ -1,0 +1,40 @@
+# --- CubeMX ---
+.ioc.saved
+MX_*
+*.mxproject              # CubeMX project state file
+
+# --- Object & Binary Files ---
+*.o
+*.obj
+*.d
+*.elf
+*.hex
+*.bin
+*.map
+*.list
+*.log
+
+# --- Auto-generated System Files ---
+Drivers/STM32*/_*.*
+Drivers/CMSIS/Device/ST/*/Include/system_*.c
+
+# --- VS Code ---
+.vscode/*
+!.vscode/settings.json          # keep shared settings if useful
+!.vscode/extensions.json        # keep extension recommendations
+
+# --- Misc OS Files ---
+.DS_Store
+Thumbs.db
+
+# --- Backup/Swap/Temp ---
+*.swp
+*.swo
+*.bak
+*.tmp
+*~
+
+# --- Debug ---
+*.dSYM/
+*.launch
+*.gdb
