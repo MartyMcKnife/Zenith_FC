@@ -14,6 +14,11 @@ MX_*
 *.list
 *.log
 
+# --- Build ---
+/build/*/.cmake
+/build/*/.ninja*
+/build/*/build.ninja
+
 # --- Auto-generated System Files ---
 Drivers/STM32*/_*.*
 Drivers/CMSIS/Device/ST/*/Include/system_*.c
