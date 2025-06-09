@@ -48,13 +48,16 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
-    Drivers/W25Q64/w25q64.c
+   "Drivers/W25Q64/w25q64.c"
+    "Drivers/MS5607/ms5607.c"
+
 )
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
-    Drivers/W25Q64
+    "Drivers/W25Q64"
+    "Drivers/MS5607"
 )
 
 # Add project symbols (macros)
