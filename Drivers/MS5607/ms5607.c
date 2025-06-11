@@ -9,6 +9,7 @@
  ******************************************************************************
  */
 #include "ms5607.h"
+uint16_t ms5607_times_updated = 0;
 
 MS5607_STATE MS5607_Init(SPI_HandleTypeDef *xhspi, GPIO_TypeDef *port,
                          uint16_t pin) {
@@ -28,9 +29,6 @@ MS5607_STATE MS5607_Init(SPI_HandleTypeDef *xhspi, GPIO_TypeDef *port,
   }
   uint16_t crc_check = crc4(&PROM_DATA);
 
-  MS5607_PRESSURE pressure_read;
-  get_pressure(&pressure_read);
-
   if ((crc_check & 0xF) != (PROM_DATA.crc & 0xF)) {
     return MS5607_FAIL;
   } else {
@@ -39,8 +37,11 @@ MS5607_STATE MS5607_Init(SPI_HandleTypeDef *xhspi, GPIO_TypeDef *port,
 }
 
 MS5607_STATE get_temperature(MS5607_TEMPERATURE *temperature) {
-  // update to most recent raw values
-  getRaw(&raw_data);
+  // been more than 2ms; update data
+  if (HAL_GetTick() - raw_data.time_captured >= 2 || raw_data.pressure == 0) {
+    getRaw(&raw_data);
+    ms5607_times_updated += 1;
+  }
 
   // if either value is 0, codes did not work correctly
   if (raw_data.pressure == 0 || raw_data.temperature == 0) {
@@ -50,9 +51,9 @@ MS5607_STATE get_temperature(MS5607_TEMPERATURE *temperature) {
   int32_t dt;
   int32_t temp;
 
-  dt = raw_data.temperature - (PROM_DATA.tref << 8);
+  dt = raw_data.temperature - ((int32_t)(PROM_DATA.tref << 8));
 
-  temp = 2000 + ((dt * PROM_DATA.temp_sens) >> 23);
+  temp = 2000 + ((int64_t)(dt * PROM_DATA.temp_sens) >> 23);
 
   temperature->dT = dt;
   temperature->temp = temp;
@@ -72,8 +73,11 @@ MS5607_STATE get_pressure(MS5607_PRESSURE *pressure) {
     return MS5607_FAIL;
   }
 
-  off = (PROM_DATA.off_t1 << 17) + ((PROM_DATA.tco * last_temp.dT) >> 6);
-  sens = (PROM_DATA.sens_t1 << 16) + ((PROM_DATA.tcs * last_temp.dT) >> 7);
+  off = ((int64_t)PROM_DATA.off_t1 << 17) +
+        ((int64_t)(PROM_DATA.tco * last_temp.dT) >> 6);
+
+  sens = ((int64_t)PROM_DATA.sens_t1 << 16) +
+         ((int64_t)(PROM_DATA.tcs * last_temp.dT) >> 7);
 
   // low temperature compensation
   if (last_temp.temp < 2000) {
@@ -81,8 +85,8 @@ MS5607_STATE get_pressure(MS5607_PRESSURE *pressure) {
     int64_t off2;
     int64_t sens2;
 
-    off2 = (61 * temp_off * temp_off) >> 4;
-    sens2 = 2 * (temp_off * temp_off);
+    off2 = (61 * (int64_t)temp_off * (int64_t)temp_off) >> 4;
+    sens2 = 2 * ((int64_t)temp_off * (int64_t)temp_off);
 
     // freezing temperature compensation
     if (last_temp.temp <= -1500) {
@@ -94,7 +98,7 @@ MS5607_STATE get_pressure(MS5607_PRESSURE *pressure) {
     off -= off2;
     sens -= sens2;
   }
-  p = (((raw_data.pressure * sens) >> 21) - off) >> 15;
+  p = ((((int64_t)raw_data.pressure * sens) >> 21) - off) >> 15;
 
   pressure->offset = off;
   pressure->sens = sens;
@@ -102,6 +106,30 @@ MS5607_STATE get_pressure(MS5607_PRESSURE *pressure) {
 
   return MS5607_SUCCESS;
 }
+
+void get_altitude(MS5607_ALTITUDE *altitude) {
+  MS5607_TEMPERATURE temperature;
+  MS5607_PRESSURE pressure;
+
+  get_temperature(&temperature);
+  get_pressure(&pressure);
+
+  if (temperature.temp < 2000) {
+    int32_t t2 = ((int64_t)temperature.dT * (int64_t)temperature.dT) >> 31;
+    temperature.temp -= t2;
+  }
+
+  float p0 = SEA_LEVEL_PRESS / (float)pressure.pressure;
+
+  int32_t height =
+      153.84615 * (pow(p0, 0.19) - 1) * ((temperature.temp / 1000) + 273.15);
+
+  altitude->altitude = height;
+  altitude->pressure = pressure.pressure;
+  altitude->temp = temperature.temp;
+}
+
+void set_OSR(MS5607_OSR_RANGES osr_level) { OSR_LEVEL = osr_level; }
 
 static void getPROM(MS5607_PROM_DATA *prom) {
   uint16_t *prom_pointer;
@@ -132,7 +160,7 @@ static void getPROM(MS5607_PROM_DATA *prom) {
 
 static void getRaw(MS5607_RAW *raw) {
   uint8_t spi_tx = OP_CONV_D1 | OSR_LEVEL;
-  uint8_t recv_buf[3];
+  uint8_t recv_buf[3] = {0};
 
   enable_cs();
   // conversion time is
@@ -143,34 +171,45 @@ static void getRaw(MS5607_RAW *raw) {
   // 8.22ms for 4096 OSR
   HAL_SPI_Transmit(m_hspi, &spi_tx, 1, 10);
   // dummy spi receive - will send high signal if conversion complete, and code
-  // can continue timeout set to 10ms for max wait time
-  HAL_SPI_Receive(m_hspi, recv_buf, 1, 20);
+  // can continue
+  while (recv_buf[0] != 0xFF) {
+    HAL_SPI_Receive(m_hspi, recv_buf, 1, 10);
+  }
   disable_cs();
+
+  spi_tx = OP_ADC_READ;
   enable_cs();
-  HAL_SPI_Transmit(m_hspi, (uint8_t *)OP_ADC_READ, 1, 10);
+  HAL_SPI_Transmit(m_hspi, &spi_tx, 1, 10);
   HAL_SPI_Receive(m_hspi, recv_buf, 3, 10);
   disable_cs();
 
   // swap bit order and push into our struct
-
   raw->pressure = (uint32_t)recv_buf[0] << 16 | (uint32_t)recv_buf[1] << 8 |
                   (uint32_t)recv_buf[0];
+
+  // clear first byte of buffer so we can listen to see if miso high
+  recv_buf[0] = 0;
 
   // same again for temp, and change to our temp op code
   spi_tx = OP_CONV_D2 | OSR_LEVEL;
   enable_cs();
   HAL_SPI_Transmit(m_hspi, &spi_tx, 1, 10);
-  HAL_SPI_Receive(m_hspi, recv_buf, 1, 20);
+  while (recv_buf[0] != 0xFF) {
+    HAL_SPI_Receive(m_hspi, recv_buf, 1, 10);
+  }
   disable_cs();
 
+  spi_tx = OP_ADC_READ;
   enable_cs();
-  HAL_SPI_Transmit(m_hspi, (uint8_t *)OP_ADC_READ, 1, 10);
+  HAL_SPI_Transmit(m_hspi, &spi_tx, 1, 10);
   HAL_SPI_Receive(m_hspi, recv_buf, 3, 10);
   disable_cs();
 
   // swap bit order and push into our struct
   raw->temperature = (uint32_t)recv_buf[0] << 16 | (uint32_t)recv_buf[1] << 8 |
                      (uint32_t)recv_buf[0];
+
+  raw->time_captured = HAL_GetTick();
 }
 
 // implemented base on AN520 from MEAS

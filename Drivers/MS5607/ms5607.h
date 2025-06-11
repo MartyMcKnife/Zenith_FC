@@ -14,6 +14,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+#include "math.h"
 #include "stm32g0xx_hal.h"
 #include <stdint.h>
 
@@ -25,6 +26,9 @@ extern "C" {
 #define OP_ADC_READ 0x00
 #define OP_CONV_D1 0x40
 #define OP_CONV_D2 0x50
+
+// baselevel mbar - set for PERTH
+#define SEA_LEVEL_PRESS 102400
 
 // Oversampling types
 typedef enum OSR_RANGES {
@@ -52,6 +56,7 @@ typedef struct PROM_DATA {
 typedef struct RAW_PT {
   uint32_t pressure;
   uint32_t temperature;
+  uint32_t time_captured;
 } MS5607_RAW;
 
 typedef struct TEMPERATURE {
@@ -64,6 +69,12 @@ typedef struct PRESSURE {
   int64_t sens;
   int32_t pressure;
 } MS5607_PRESSURE;
+
+typedef struct ALTITUDE {
+  int32_t temp;
+  int32_t pressure;
+  int32_t altitude;
+} MS5607_ALTITUDE;
 
 // Public Functions
 
@@ -80,33 +91,38 @@ MS5607_STATE MS5607_Init(SPI_HandleTypeDef *xhspi, GPIO_TypeDef *port,
                          uint16_t pin);
 
 /**
- * @brief  Retrieves temeprature from MS5607 Sensor
- * @param  SPI Handle address
+ * @brief  Retrieves UNCOMPENSATED temeprature from MS5607 Sensor
  * @param  Address to Temperature struct
  * @retval Initialization status:
  *           - FAILED: Was not abe to communicate with sensor
- *           - SUCCESS: Sensor initialized OK and ready to use
+ *           - SUCCESS: Temperature struct updated with values
  */
 
 MS5607_STATE get_temperature(MS5607_TEMPERATURE *temperature);
 
 /**
  * @brief  Retrieves pressure value from MS5607 Sensor
- * @param  SPI Handle address
  * @param  Address to Pressure struct
  * @retval Initialization status:
  *           - FAILED: Was not abe to communicate with sensor
- *           - SUCCESS: Sensor initialized OK and ready to use
+ *           - SUCCESS: Pressure values succesfully calculated
  */
 MS5607_STATE get_pressure(MS5607_PRESSURE *pressure);
 
 /**
- * @brief  Retrieves altitude value from MS5607 Sensor
- * @param  SPI Handle address
- * @param  Address to Pressure struct
- * @retval Altitude. Defaults to 0 if sensor not working as expected
+ * @brief  Retrieves latest altitude value from MS5607 Sensor. Also includes raw
+ * pressure and compensated temperature
+ * @param  Address to altitude struct that needs updating
+ * @retval void
  */
-uint16_t get_altitude();
+void get_altitude(MS5607_ALTITUDE *altitude);
+
+/**
+ * @brief Updates the OSR to the desired level
+ * @param  Address to altitude struct that needs updating
+ * @retval void
+ */
+void set_OSR(MS5607_OSR_RANGES osr_level);
 
 // Private functions
 static void getPROM(MS5607_PROM_DATA *prom);
@@ -120,7 +136,7 @@ static GPIO_TypeDef *CS_PORT;
 static uint16_t CS_PIN;
 static SPI_HandleTypeDef *m_hspi;
 static MS5607_PROM_DATA PROM_DATA;
-static MS5607_RAW raw_data;
+static MS5607_RAW raw_data = {0};
 static MS5607_OSR_RANGES OSR_LEVEL = OSR_1024;
 
 #ifdef __cplusplus
