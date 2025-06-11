@@ -11,6 +11,9 @@
 
 #ifndef __MS5607_H
 #define __MS5607_H
+#ifdef __cplusplus
+extern "C" {
+#endif
 #include "stm32g0xx_hal.h"
 #include <stdint.h>
 
@@ -22,7 +25,6 @@
 #define OP_ADC_READ 0x00
 #define OP_CONV_D1 0x40
 #define OP_CONV_D2 0x50
-#define OP_PROM_READ PROM_ADDR_CONV
 
 // Oversampling types
 typedef enum OSR_RANGES {
@@ -34,15 +36,17 @@ typedef enum OSR_RANGES {
 } MS5607_OSR_RANGES;
 
 // IC States
-typedef enum STATES { SUCCESS, BUSY, FAIL } MS5607_STATE;
+typedef enum STATES { MS5607_SUCCESS, MS5607_FAIL } MS5607_STATE;
 
 typedef struct PROM_DATA {
+  uint16_t reserved;
   uint16_t sens_t1;
   uint16_t off_t1;
   uint16_t tcs;
   uint16_t tco;
   uint16_t tref;
-  uint16_t temp_sens
+  uint16_t temp_sens;
+  uint16_t crc;
 } MS5607_PROM_DATA;
 
 typedef struct RAW_PT {
@@ -61,6 +65,8 @@ typedef struct PRESSURE {
   int32_t pressure;
 } MS5607_PRESSURE;
 
+// Public Functions
+
 /**
  * @brief  Initializes MS5607 Sensor
  * @param  SPI Handle address
@@ -69,9 +75,8 @@ typedef struct PRESSURE {
  * @retval Initialization status:
  *           - FAILED: Was not abe to communicate with sensor
  *           - SUCCESS: Sensor initialized OK and ready to use
- *           - BUSY: Sensor responds but not as expected
  */
-MS5607_STATE MS5607_Init(SPI_HandleTypeDef *hspi, GPIO_TypeDef *port,
+MS5607_STATE MS5607_Init(SPI_HandleTypeDef *xhspi, GPIO_TypeDef *port,
                          uint16_t pin);
 
 /**
@@ -81,11 +86,9 @@ MS5607_STATE MS5607_Init(SPI_HandleTypeDef *hspi, GPIO_TypeDef *port,
  * @retval Initialization status:
  *           - FAILED: Was not abe to communicate with sensor
  *           - SUCCESS: Sensor initialized OK and ready to use
- *           - BUSY: Sensor responds but not as expected
  */
 
-MS5607_STATE get_temperature(SPI_HandleTypeDef *hspi,
-                             MS5607_TEMPERATURE *temperature);
+MS5607_STATE get_temperature(MS5607_TEMPERATURE *temperature);
 
 /**
  * @brief  Retrieves pressure value from MS5607 Sensor
@@ -94,9 +97,8 @@ MS5607_STATE get_temperature(SPI_HandleTypeDef *hspi,
  * @retval Initialization status:
  *           - FAILED: Was not abe to communicate with sensor
  *           - SUCCESS: Sensor initialized OK and ready to use
- *           - BUSY: Sensor responds but not as expected
  */
-MS5607_STATE get_pressure(SPI_HandleTypeDef *hspi, MS5607_PRESSURE *pressure);
+MS5607_STATE get_pressure(MS5607_PRESSURE *pressure);
 
 /**
  * @brief  Retrieves altitude value from MS5607 Sensor
@@ -104,6 +106,23 @@ MS5607_STATE get_pressure(SPI_HandleTypeDef *hspi, MS5607_PRESSURE *pressure);
  * @param  Address to Pressure struct
  * @retval Altitude. Defaults to 0 if sensor not working as expected
  */
-uint16_t get_altitude(SPI_HandleTypeDef *hspi);
+uint16_t get_altitude();
+
+// Private functions
+static void getPROM(MS5607_PROM_DATA *prom);
+static void getRaw(MS5607_RAW *raw);
+static void enable_cs();
+static void disable_cs();
+static uint16_t crc4(MS5607_PROM_DATA *prom);
+
+// Private variables (what handlers are used)
+static GPIO_TypeDef *CS_PORT;
+static uint16_t CS_PIN;
+static SPI_HandleTypeDef *hspi;
+static MS5607_PROM_DATA RAW_DATA;
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif //__MS5607_H
