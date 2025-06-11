@@ -118,8 +118,10 @@ static uint16_t crc4(MS5607_PROM_DATA *prom);
 // Private variables (what handlers are used)
 static GPIO_TypeDef *CS_PORT;
 static uint16_t CS_PIN;
-static SPI_HandleTypeDef *hspi;
-static MS5607_PROM_DATA RAW_DATA;
+static SPI_HandleTypeDef *m_hspi;
+static MS5607_PROM_DATA PROM_DATA;
+static MS5607_RAW raw_data;
+static MS5607_OSR_RANGES OSR_LEVEL = OSR_1024;
 
 #ifdef __cplusplus
 }
