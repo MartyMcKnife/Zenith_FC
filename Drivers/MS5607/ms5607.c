@@ -107,6 +107,7 @@ MS5607_STATE get_pressure(MS5607_PRESSURE *pressure) {
   return MS5607_SUCCESS;
 }
 
+// calculated from https://www.mide.com/air-pressure-at-altitude-calculator
 void get_altitude(MS5607_ALTITUDE *altitude) {
   MS5607_TEMPERATURE temperature;
   MS5607_PRESSURE pressure;
@@ -123,6 +124,12 @@ void get_altitude(MS5607_ALTITUDE *altitude) {
 
   int32_t height =
       153.84615 * (pow(p0, 0.19) - 1) * ((temperature.temp / 1000) + 273.15);
+
+  // check to see if we are in stratosphere - calculation is probably wrong
+  if (height > 11500) {
+    height = 11000 + ((8.31432 * (temperature.temp / 1000 - 71.5) * log(p0)) /
+                      (-0.284));
+  }
 
   altitude->altitude = height;
   altitude->pressure = pressure.pressure;
