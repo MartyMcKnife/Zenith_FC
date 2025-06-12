@@ -9,7 +9,6 @@
  ******************************************************************************
  */
 #include "ms5607.h"
-uint16_t ms5607_times_updated = 0;
 
 MS5607_STATE MS5607_Init(SPI_HandleTypeDef *xhspi, GPIO_TypeDef *port,
                          uint16_t pin) {
@@ -40,7 +39,6 @@ MS5607_STATE get_temperature(MS5607_TEMPERATURE *temperature) {
   // been more than 2ms; update data
   if (HAL_GetTick() - raw_data.time_captured >= 2 || raw_data.pressure == 0) {
     getRaw(&raw_data);
-    ms5607_times_updated += 1;
   }
 
   // if either value is 0, codes did not work correctly
@@ -108,7 +106,7 @@ MS5607_STATE get_pressure(MS5607_PRESSURE *pressure) {
 }
 
 // calculated from https://www.mide.com/air-pressure-at-altitude-calculator
-void get_altitude(MS5607_ALTITUDE *altitude) {
+void get_altitude(MS5607_ALTITUDE *altitude, uint32_t *baseline_pressure) {
   MS5607_TEMPERATURE temperature;
   MS5607_PRESSURE pressure;
 
@@ -120,7 +118,7 @@ void get_altitude(MS5607_ALTITUDE *altitude) {
     temperature.temp -= t2;
   }
 
-  float p0 = SEA_LEVEL_PRESS / (float)pressure.pressure;
+  float p0 = (*baseline_pressure) / (float)pressure.pressure;
 
   int32_t height =
       153.84615 * (pow(p0, 0.19) - 1) * ((temperature.temp / 1000) + 273.15);

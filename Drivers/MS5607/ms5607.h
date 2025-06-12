@@ -27,9 +27,6 @@ extern "C" {
 #define OP_CONV_D1 0x40
 #define OP_CONV_D2 0x50
 
-// baselevel mbar - set for PERTH
-#define SEA_LEVEL_PRESS 102400
-
 // Oversampling types
 typedef enum OSR_RANGES {
   OSR_256,
@@ -115,7 +112,7 @@ MS5607_STATE get_pressure(MS5607_PRESSURE *pressure);
  * @param  Address to altitude struct that needs updating
  * @retval void
  */
-void get_altitude(MS5607_ALTITUDE *altitude);
+void get_altitude(MS5607_ALTITUDE *altitude, uint32_t *baseline_pressure);
 
 /**
  * @brief Updates the OSR to the desired level
