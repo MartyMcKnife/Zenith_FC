@@ -114,7 +114,7 @@ int main(void) {
 
     /* USER CODE BEGIN 3 */
     HAL_GPIO_TogglePin(STS_LED_GPIO_Port, STS_LED_Pin);
-    get_altitude(&altitude);
+    get_altitude(&altitude, 102400);
     HAL_Delay(500);
   }
   /* USER CODE END 3 */

@@ -106,7 +106,7 @@ MS5607_STATE get_pressure(MS5607_PRESSURE *pressure) {
 }
 
 // calculated from https://www.mide.com/air-pressure-at-altitude-calculator
-void get_altitude(MS5607_ALTITUDE *altitude, uint32_t *baseline_pressure) {
+void get_altitude(MS5607_ALTITUDE *altitude, uint32_t baseline_pressure) {
   MS5607_TEMPERATURE temperature;
   MS5607_PRESSURE pressure;
 
@@ -118,7 +118,7 @@ void get_altitude(MS5607_ALTITUDE *altitude, uint32_t *baseline_pressure) {
     temperature.temp -= t2;
   }
 
-  float p0 = (*baseline_pressure) / (float)pressure.pressure;
+  float p0 = (baseline_pressure) / (float)pressure.pressure;
 
   int32_t height =
       153.84615 * (pow(p0, 0.19) - 1) * ((temperature.temp / 1000) + 273.15);

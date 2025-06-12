@@ -112,7 +112,7 @@ MS5607_STATE get_pressure(MS5607_PRESSURE *pressure);
  * @param  Address to altitude struct that needs updating
  * @retval void
  */
-void get_altitude(MS5607_ALTITUDE *altitude, uint32_t *baseline_pressure);
+void get_altitude(MS5607_ALTITUDE *altitude, uint32_t baseline_pressure);
 
 /**
  * @brief Updates the OSR to the desired level
