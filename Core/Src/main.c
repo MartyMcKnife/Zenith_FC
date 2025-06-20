@@ -27,6 +27,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "bq27441.h"
 #include "ms5607.h"
 
 /* USER CODE END Includes */
@@ -103,7 +104,9 @@ int main(void) {
   }
   /* USER CODE BEGIN 2 */
   MS5607_Init(&hspi2, SPI2_CS_GPIO_Port, SPI2_CS_Pin);
+  // LSM6XX_Init(&hi2c2);
   MS5607_ALTITUDE altitude;
+  BQ27441_Init(&hi2c1);
 
   /* USER CODE END 2 */
 

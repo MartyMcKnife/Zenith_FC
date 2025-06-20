@@ -28,6 +28,9 @@ extern "C" {
     "Please define either LSM6DS3TR_C or LSM6DSO32 before including this header."
 #endif
 
+// Register addresses generated with ChatGPT
+// Has been validated against datasheet so shouldn't have any hallucinations
+
 // =======================
 // Shared Registers
 // =======================
@@ -80,6 +83,8 @@ extern "C" {
 #define REG_MD1_CFG 0x5E
 #define REG_MD2_CFG 0x5F
 
+#define LSM6XX_ADR 0x6A
+
 // =======================
 // Device-specific Registers
 // =======================
@@ -100,6 +105,8 @@ extern "C" {
 #define REG_FUNC_SRC1 0x53
 #define REG_FUNC_SRC2 0x54
 #define REG_WRIST_TILT_IA 0x55
+
+#define WHO_AM_I 0x6A
 
 #elif defined(LSM6DSO32)
 
@@ -126,7 +133,53 @@ extern "C" {
 #define REG_I3C_BUS_AVB 0x62
 #define REG_INTERNAL_FREQ_FINE 0x63
 
+#define WHO_AM_I 0x6C
+
 #endif // LSM6DSO32
+
+// states
+typedef enum lsm_states {
+  LSM6XX_OK,
+  LSM6XX_FAIL,
+  LSM6XX_BUSY,
+} LSM6XX_STATES;
+
+// public functions
+
+/**
+ * @brief  Initializes LSM6XX Sensor
+ * @param  hi2c I2C Handler address
+ * @retval Initialization status:
+ *           - FAILED: Was not abe to communicate with sensor
+ *           - SUCCESS: Sensor initialized OK and ready to use
+ */
+LSM6XX_STATES LSM6XX_Init(I2C_HandleTypeDef *xi2c);
+
+/**
+ * @brief  Read latest acceleration data
+ * @param  buf 3 length array buffer to read into
+ * @retval Initialization status:
+ *           - FAILED: Was not abe to communicate with sensor
+ *           - SUCCESS: Sensor initialized OK and ready to use
+ */
+LSM6XX_STATES LSM6XX_get_accel(int16_t *buf);
+
+/**
+ * @brief  Read latest gyroscope data
+ * @param  buf 3 length array buffer to read into
+ * @retval Initialization status:
+ *           - FAILED: Was not abe to communicate with sensor
+ *           - SUCCESS: Sensor initialized OK and ready to use
+ */
+LSM6XX_STATES LSM6XX_get_gyro(int16_t *buf);
+
+// private functions
+static HAL_StatusTypeDef lsm6xx_write_reg(uint8_t reg, uint8_t value);
+static HAL_StatusTypeDef lsm6xx_read_reg(uint8_t reg, uint8_t *ret_val);
+
+// static handlers
+static I2C_HandleTypeDef *l_hi2c;
+static uint8_t lsm_addr = LSM6XX_ADR << 1;
 
 #ifdef __cplusplus
 }

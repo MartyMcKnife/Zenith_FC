@@ -14,4 +14,8 @@
 #include "stm32g0xx_hal.h"
 #include <stdint.h>
 
+// private functions
+static void enable_cs();
+static void disable_cs();
+
 #endif //__W25Q64_H
