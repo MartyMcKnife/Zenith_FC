@@ -1,0 +1,122 @@
+
+# STM32 VSCode Project .gitignore
+
+# Build outputs
+build/
+*.o
+*.elf
+*.hex
+*.bin
+*.map
+*.list
+*.su
+*.d
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+
+# VSCode specific
+.vscode/launch.json
+.vscode/tasks.json
+.vscode/settings.json
+# Keep c_cpp_properties.json - it's useful for others
+# .vscode/c_cpp_properties.json
+
+# Debug files
+*.dSYM/
+*.dwarf
+
+# STM32CubeIDE specific
+.metadata/
+.project
+.cproject
+.settings/
+Debug/
+Release/
+*.launch
+
+# Temporary files
+*~
+*.swp
+*.swo
+*#
+
+# OS specific
+.DS_Store
+Thumbs.db
+*.tmp
+
+# Logs
+*.log
+
+# Generated documentation
+html/
+latex/
+
+# Backup files
+*.bak
+*.backup
+*.orig
+
+# IDE specific
+*.sublime-*
+*.code-workspace
+
+# Python (if using any Python scripts)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.env
+
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# STM32-specific generated files (keep these commented out if you want to track them)
+# Drivers/
+# Middlewares/
+# *.ioc
+
+# Optional: Uncomment if you don't want to track CubeMX configuration
+# *.ioc
+# .mxproject
+
+# Optional: Uncomment if you don't want to track linker scripts
+# *.ld
