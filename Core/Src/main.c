@@ -112,6 +112,8 @@ int main(void) {
   /* USER CODE BEGIN 2 */
   MS5607_Init(&hspi2, SPI2_CS_GPIO_Port, SPI2_CS_Pin);
   MS5607_ALTITUDE altitude;
+
+  LSM6XX_Init(&hi2c2);
   /* USER CODE END 2 */
 
   /* Infinite loop */
