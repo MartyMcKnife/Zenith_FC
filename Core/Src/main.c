@@ -114,6 +114,10 @@ int main(void) {
   MS5607_ALTITUDE altitude;
 
   LSM6XX_Init(&hi2c2);
+  LSM6XX_set_accel_config(LSM_ACCEL_32G, LSM_ACCEL_6K66HZ);
+  // LSM6XX_set_gyro_config(LSM_GYRO_1000, LSM_GYRO_6K66HZ);
+  int16_t ret_accel_buff[3];
+  int16_t ret_gyro_buff[3];
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -122,8 +126,10 @@ int main(void) {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    HAL_GPIO_TogglePin(STS_LED_GPIO_Port, STS_LED_Pin);
+    // HAL_GPIO_TogglePin(STS_LED_GPIO_Port, STS_LED_Pin);
     get_altitude(&altitude, 102400);
+    LSM6XX_get_accel(ret_accel_buff);
+    // LSM6XX_get_gyro(ret_gyro_buff);
     HAL_Delay(500);
   }
   /* USER CODE END 3 */

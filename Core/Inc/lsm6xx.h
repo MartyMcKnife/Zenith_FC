@@ -122,6 +122,8 @@ extern "C" {
 #define REG_TIMESTAMP0 0x40
 #define REG_TIMESTAMP1 0x41
 #define REG_TIMESTAMP2 0x42
+#define REG_TAP_CFG1 0x57
+#define REG_TAP_CFG2 0x58
 #define REG_FIFO_DATA_OUT_TAG 0x78
 #define REG_FIFO_DATA_OUT_X_L 0x79
 #define REG_FIFO_DATA_OUT_X_H 0x7A
@@ -146,66 +148,151 @@ typedef enum lsm_states {
 } LSM6XX_STATES;
 
 typedef enum lsm_accel_ranges {
-  LSM_ACCEL_4G,
-  LSM_ACCEL_32G,
-  LSM_ACCEL_8G,
-  LSM_ACCEL_16G
+  LSM_ACCEL_4G = 0,
+  LSM_ACCEL_32G = 1,
+  LSM_ACCEL_8G = 2,
+  LSM_ACCEL_16G = 3
 } LSM6XX_ACCEL_RANGE;
 
+typedef enum lsm_gyro_ranges {
+  // register map is FS[1:0], FS_125
+  // for some reason
+  // if we combine it to be [FS, FS, FS_125], less overhead for driver
+  // implementation
+  // i.e. value of 0 maps to [0, 0, 0]
+  // value of 4 maps to [1, 0, 0]
+  // enums by default ascend numerically but we need to skip a few numbers
+  LSM_GYRO_250,
+  LSM_GYO_125,
+  LSM_GYRO_500,
+  LSM_GYRO_1000 = 4,
+  LSM_GYRO_2000 = 6,
+} LSM6XX_GYRO_RANGE;
+
 typedef enum lsm_accel_rate {
-  LSM_ACCEL_12HZ,
-  LSM_ACCEL_26HZ,
-  LSM_ACCEL_52HZ,
-  LSM_ACCEL_104HZ,
-  LSM_ACCEL_208HZ,
-  LSM_ACCEL_416HZ,
-  LSM_ACCEL_833HZ,
-  LSM_ACCEL_1K66HZ,
-  LSM_ACCEL_3K33HZ,
-  LSM_ACCEL_6K66HZ,
-  LSM_ACCEL_1HZ6,
+  LSM_ACCEL_12HZ = 1,
+  LSM_ACCEL_26HZ = 2,
+  LSM_ACCEL_52HZ = 3,
+  LSM_ACCEL_104HZ = 4,
+  LSM_ACCEL_208HZ = 5,
+  LSM_ACCEL_416HZ = 6,
+  LSM_ACCEL_833HZ = 7,
+  LSM_ACCEL_1K66HZ = 8,
+  LSM_ACCEL_3K33HZ = 9,
+  LSM_ACCEL_6K66HZ = 10,
+  LSM_ACCEL_1HZ6 = 11,
 } LSM6XX_ACCEL_RATE;
 
 typedef enum lsm_gyro_rate {
-  LSM_GYRO_12HZ,
-  LSM_GYRO_26HZ,
-  LSM_GYRO_52HZ,
-  LSM_GYRO_104HZ,
-  LSM_GYRO_208HZ,
-  LSM_GYRO_416HZ,
-  LSM_GYRO_833HZ,
-  LSM_GYRO_1K66HZ,
-  LSM_GYRO_3K33HZ,
-  LSM_GYRO_6K66HZ,
+  LSM_GYRO_12HZ = 1,
+  LSM_GYRO_26HZ = 2,
+  LSM_GYRO_52HZ = 3,
+  LSM_GYRO_104HZ = 4,
+  LSM_GYRO_208HZ = 5,
+  LSM_GYRO_416HZ = 6,
+  LSM_GYRO_833HZ = 7,
+  LSM_GYRO_1K66HZ = 8,
+  LSM_GYRO_3K33HZ = 9,
+  LSM_GYRO_6K66HZ = 10,
 } LSM6XX_GYRO_RATE;
 
-// public functions
+typedef enum lsm_int_lines {
+  INT1,
+  INT2,
+} LSM6XX_INT;
+
+// units are in mG (0.00981 m/s2)
+typedef enum lsm_freefall_thres {
+  LSM_FF_312,
+  LSM_FF_438,
+  LSM_FF_500,
+} LSM6XX_FF_THRES;
+
+// =======================
+// Public Functions
+// =======================
 
 /**
  * @brief  Initializes LSM6XX Sensor
  * @param  hi2c I2C Handler address
  * @retval Initialization status:
  *           - FAILED: Was not abe to communicate with sensor
- *           - SUCCESS: Sensor initialized OK and ready to use
+ *           - OK: Sensor initialized OK and ready to use
  */
 LSM6XX_STATES
 LSM6XX_Init(I2C_HandleTypeDef *xi2c);
 
 /**
- * @brief  Read latest acceleration data
- * @param  buf 3 length array buffer to read into
+ * @brief  Sets accelearion sensitivity
+ * @param  lsm_accel range of accelerometer
+ * @param lsm_rate rate of accelerometer sampling
  * @retval Initialization status:
- *           - FAILED: Was not abe to communicate with sensor
- *           - SUCCESS: Sensor initialized OK and ready to use
+ *           - FAILED: Couldn't change register values (has sensor been
+ * initialized?)
+ *           - OK: Acceleration correctly updated
+ */
+
+LSM6XX_STATES LSM6XX_set_accel_config(LSM6XX_ACCEL_RANGE range,
+                                      LSM6XX_ACCEL_RATE rate);
+
+/**
+ * @brief  Sets gyroscope sensitivity
+ * @param  range range of gyroscope
+ * @param rate rate of gyroscope sampling
+ * @retval Initialization status:
+ *           - FAILED: Couldn't change register values (has sensor been
+ * initialized?)
+ *           - OK: Acceleration correctly updated
+ */
+
+LSM6XX_STATES LSM6XX_set_gyro_config(LSM6XX_GYRO_RANGE range,
+                                     LSM6XX_GYRO_RATE rate);
+
+/**
+ * @brief  Enables the free fall (FF) interrupt mask on the IMU
+ * @param  int_line which interrupt pin
+ * @param ff_thres trigger point for the interrupt
+ * @retval Status:
+ *           - FAILED: Couldn't enable pin
+ *           - OK: Interrupt mask correctly set
+ */
+
+LSM6XX_STATES LSM6XX_set_ff(LSM6XX_INT int_line, LSM6XX_FF_THRES ff_thres);
+
+/**
+ * @brief  Calibrates both accel and gyroscope values. This only has to be done
+ * once Testing should be done when connected to a debugger. The code will ask
+ * you to place the IMU on each axis, to record a baseline This is then stored
+ * in the IMU's register. This should only be done when developing, and not used
+ * in any production code
+ * @retval Status:
+ *           - FAILED: Couldn't connect to the sensor and update the values
+ *           - OK: Baseline calibration completed.
+ */
+
+LSM6XX_STATES LSM6XX_calibrate();
+
+/**
+ * @brief  Read latest acceleration data
+ * @param  buf 3 length array buffer to read into.
+ * [0] = x_axis
+ * [1] = y_axis
+ * [2] = z_axis
+ * @retval Status:
+ *           - FAILED: No data returned
+ *           - OK: Data OKfully returned
  */
 LSM6XX_STATES LSM6XX_get_accel(int16_t *buf);
 
 /**
  * @brief  Read latest gyroscope data
  * @param  buf 3 length array buffer to read into
- * @retval Initialization status:
- *           - FAILED: Was not abe to communicate with sensor
- *           - SUCCESS: Sensor initialized OK and ready to use
+ * [0] = x_axis
+ * [1] = y_axis
+ * [2] = z_axis
+ * @retval Status:
+ *           - FAILED: No data returned
+ *           - OK: Data OKfully returned
  */
 LSM6XX_STATES LSM6XX_get_gyro(int16_t *buf);
 
