@@ -167,29 +167,29 @@ typedef enum lsm_accel_rate {
 } LSM6XX_ACCEL_RATE;
 
 typedef enum lsm_gyro_rate {
-  LSM_ACCEL_12HZ,
-  LSM_ACCEL_26HZ,
-  LSM_ACCEL_52HZ,
-  LSM_ACCEL_104HZ,
-  LSM_ACCEL_208HZ,
-  LSM_ACCEL_416HZ,
-  LSM_ACCEL_833HZ,
-  LSM_ACCEL_1K66HZ,
-  LSM_ACCEL_3K33HZ,
-  LSM_ACCEL_6K66HZ,
-} LSM6XX_GYRO_RATE
+  LSM_GYRO_12HZ,
+  LSM_GYRO_26HZ,
+  LSM_GYRO_52HZ,
+  LSM_GYRO_104HZ,
+  LSM_GYRO_208HZ,
+  LSM_GYRO_416HZ,
+  LSM_GYRO_833HZ,
+  LSM_GYRO_1K66HZ,
+  LSM_GYRO_3K33HZ,
+  LSM_GYRO_6K66HZ,
+} LSM6XX_GYRO_RATE;
 
-    // public functions
+// public functions
 
-    /**
-     * @brief  Initializes LSM6XX Sensor
-     * @param  hi2c I2C Handler address
-     * @retval Initialization status:
-     *           - FAILED: Was not abe to communicate with sensor
-     *           - SUCCESS: Sensor initialized OK and ready to use
-     */
-    LSM6XX_STATES
-    LSM6XX_Init(I2C_HandleTypeDef *xi2c);
+/**
+ * @brief  Initializes LSM6XX Sensor
+ * @param  hi2c I2C Handler address
+ * @retval Initialization status:
+ *           - FAILED: Was not abe to communicate with sensor
+ *           - SUCCESS: Sensor initialized OK and ready to use
+ */
+LSM6XX_STATES
+LSM6XX_Init(I2C_HandleTypeDef *xi2c);
 
 /**
  * @brief  Read latest acceleration data
