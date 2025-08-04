@@ -15,10 +15,14 @@
 // private functions
 static HAL_StatusTypeDef lsm6xx_write_reg(uint8_t reg, uint8_t value);
 static HAL_StatusTypeDef lsm6xx_read_reg(uint8_t reg, uint8_t *ret_val);
+static LSM6XX_STATES lsm6xx_get_accel_raw(LSM6XX_RAW *buf);
+static LSM6XX_STATES lsm6xx_get_gyro_raw(LSM6XX_RAW *buf);
 
 // static handlers
 static I2C_HandleTypeDef *l_hi2c;
 static uint8_t lsm_addr = LSM6XX_ADR << 1;
+static uint8_t cur_xl_fs;
+static uint8_t cur_g_fs;
 
 // Handlers for Read/Write
 static HAL_StatusTypeDef lsm6xx_write_reg(uint8_t reg, uint8_t value) {
@@ -28,6 +32,57 @@ static HAL_StatusTypeDef lsm6xx_write_reg(uint8_t reg, uint8_t value) {
 static HAL_StatusTypeDef lsm6xx_read_reg(uint8_t reg, uint8_t *ret_val) {
   return HAL_I2C_Mem_Read(l_hi2c, lsm_addr, reg, I2C_MEMADD_SIZE_8BIT, ret_val,
                           1, 10);
+}
+
+static HAL_StatusTypeDef lsm6dxx_read_regs(uint8_t reg, uint8_t *ret_val,
+                                           uint16_t len) {
+  return HAL_I2C_Mem_Read(l_hi2c, lsm_addr, reg, I2C_MEMADD_SIZE_8BIT, ret_val,
+                          len, 10);
+}
+
+// handlers to map range to sensitivity
+static float lsm6xx_get_xl_sensitivity(LSM6XX_ACCEL_FS val) {
+  switch (val) {
+  case LSM_ACCEL_4G:
+    return 0.000122f; // 4g / 32768 LSB
+    break;
+  case LSM_ACCEL_8G:
+    return 0.000244f; // 8g / 32768 LSB
+    break;
+  case LSM_ACCEL_16G:
+    return 0.000488f; // 16g / 32768 LSB
+    break;
+  case LSM_ACCEL_32G:
+    return 0.000976f; // 32g / 32768 LSB
+    break;
+
+  default:
+    return 0;
+    break;
+  }
+}
+
+static float lsm6xx_get_gy_sensitivity(LSM6XX_GYRO_FS val) {
+  switch (val) {
+  case LSM_GYRO_125:
+    return 0.004375f; // 125dps / 32768 LSB * 1.142857
+    break;
+  case LSM_GYRO_250:
+    return 0.008750f; // 250dps / 32768 LSB * 1.142857
+    break;
+  case LSM_GYRO_500:
+    return 0.017500f; // 500dps / 32768 LSB * 1.142857
+    break;
+  case LSM_GYRO_1000:
+    return 0.035000f; // 1000dps / 32768 LSB * 1.142857
+    break;
+  case LSM_GYRO_2000:
+    return 0.070000f; // 2000dps / 32768 LSB * 1.142857
+    break;
+  default:
+    return 0;
+    break;
+  }
 }
 
 LSM6XX_STATES LSM6XX_Init(I2C_HandleTypeDef *xi2c) {
@@ -52,40 +107,41 @@ LSM6XX_STATES LSM6XX_Init(I2C_HandleTypeDef *xi2c) {
   // reset our device to known state
   lsm6xx_write_reg(REG_CTRL3_C, 1);
 
-  // tiny delay to let device clear
-  HAL_Delay(1);
+  // delay to let device clear
+  HAL_Delay(100);
 
   return LSM6XX_OK;
 }
 
-LSM6XX_STATES LSM6XX_set_accel_config(LSM6XX_ACCEL_RANGE range,
-                                      LSM6XX_ACCEL_RATE rate) {
+LSM6XX_STATES LSM6XX_set_accel_config(LSM6XX_ACCEL_FS fs,
+                                      LSM6XX_ACCEL_ODR odr) {
   // register is 8 bits long; first 4 are our rate, next 3 are scale
 
-  uint8_t pkt = (rate | (range << 4));
+  uint8_t pkt = ((fs << 2) | (odr << 4));
   uint8_t chk_pkt;
 
   lsm6xx_write_reg(REG_CTRL1_XL, pkt);
   lsm6xx_read_reg(REG_CTRL1_XL, &chk_pkt);
 
   if (chk_pkt == pkt) {
+    cur_xl_fs = fs;
     return LSM6XX_OK;
   } else {
     return LSM6XX_FAIL;
   }
 }
 
-LSM6XX_STATES LSM6XX_set_gyro_config(LSM6XX_GYRO_RANGE range,
-                                     LSM6XX_GYRO_RATE rate) {
+LSM6XX_STATES LSM6XX_set_gyro_config(LSM6XX_GYRO_FS fs, LSM6XX_GYRO_ODR odr) {
   // register is 8 bits long; first 4 are our rate, next 3 are scale
 
-  uint8_t pkt = (range | (rate << 4));
+  uint8_t pkt = ((fs << 1) | (odr << 4));
   uint8_t chk_pkt;
 
   lsm6xx_write_reg(REG_CTRL2_G, pkt);
   lsm6xx_read_reg(REG_CTRL2_G, &chk_pkt);
 
   if ((chk_pkt) == pkt) {
+    cur_g_fs = fs;
     return LSM6XX_OK;
   } else {
     return LSM6XX_FAIL;
@@ -120,7 +176,7 @@ LSM6XX_STATES LSM6XX_set_ff(LSM6XX_INT int_line, LSM6XX_FF_THRES ff_thres) {
   }
 }
 
-LSM6XX_STATES LSM6XX_get_accel(int16_t *buf) {
+LSM6XX_STATES lsm6xx_get_accel_raw(LSM6XX_RAW *buf) {
   // check to make sure accel data is ready to be processed (always should be)
   uint8_t chk_pkt;
   lsm6xx_read_reg(REG_STATUS_REG, &chk_pkt);
@@ -128,25 +184,36 @@ LSM6XX_STATES LSM6XX_get_accel(int16_t *buf) {
     return LSM6XX_FAIL;
   }
 
-  // loop through each axis
-  // Each axis has low value (D[7:0]) and high value (D[16:8])
-  // every axis is read, then combined and pushed into the buffer
-  // read Z axis
-  uint8_t low;
-  uint8_t high;
+  uint8_t raw_data[6];
 
-  for (uint8_t i = 0; i < 3; i++) {
-    uint8_t REG_L = REG_OUTX_L_XL + (i * 2);
-    uint8_t REG_H = REG_OUTX_L_XL + (i * 2) + 1;
-    lsm6xx_read_reg(REG_L, &low);
-    lsm6xx_read_reg(REG_H, &high);
-    buf[i] = (int16_t)(high) << 8 | (int16_t)(low);
+  if (lsm6dxx_read_regs(REG_OUTX_L_XL, raw_data, 6) != HAL_OK) {
+    return LSM6XX_FAIL;
   }
+
+  buf->x = (int16_t)(raw_data[1] << 8 | raw_data[0]);
+  buf->y = (int16_t)(raw_data[3] << 8 | raw_data[2]);
+  buf->z = (int16_t)(raw_data[5] << 8 | raw_data[4]);
 
   return LSM6XX_OK;
 }
 
-LSM6XX_STATES LSM6XX_get_gyro(int16_t *buf) {
+LSM6XX_STATES LSM6XX_get_accel(LSM6XX_DATA *buf) {
+  LSM6XX_RAW raw_buff;
+  if (lsm6xx_get_accel_raw(&raw_buff) != LSM6XX_FAIL) {
+    float sf = lsm6xx_get_xl_sensitivity(cur_xl_fs);
+
+    buf->x = raw_buff.x * sf * 9.81f;
+    buf->y = raw_buff.y * sf * 9.81f;
+    buf->z = raw_buff.z * sf * 9.81f;
+
+    return LSM6XX_OK;
+
+  } else {
+    return LSM6XX_FAIL;
+  }
+}
+
+LSM6XX_STATES lsm6xx_get_gyro_raw(LSM6XX_RAW *buf) {
   // same implmentation as accel
 
   uint8_t chk_pkt;
@@ -155,16 +222,155 @@ LSM6XX_STATES LSM6XX_get_gyro(int16_t *buf) {
     return LSM6XX_FAIL;
   }
 
-  uint8_t low;
-  uint8_t high;
+  uint8_t raw_data[6];
 
-  for (uint8_t i = 0; i < 3; i++) {
-    uint8_t REG_L = REG_OUTX_L_G + (i * 2);
-    uint8_t REG_H = REG_OUTX_L_G + (i * 2) + 1;
-    lsm6xx_read_reg(REG_L, &low);
-    lsm6xx_read_reg(REG_H, &high);
-    buf[i] = (int16_t)(high) << 8 | (int16_t)(low);
+  if (lsm6dxx_read_regs(REG_OUTX_L_G, raw_data, 6) != HAL_OK) {
+    return LSM6XX_FAIL;
   }
 
+  buf->x = (int16_t)(raw_data[1] << 8 | raw_data[0]);
+  buf->y = (int16_t)(raw_data[3] << 8 | raw_data[2]);
+  buf->z = (int16_t)(raw_data[5] << 8 | raw_data[4]);
+
   return LSM6XX_OK;
+}
+
+LSM6XX_STATES LSM6XX_get_gyro(LSM6XX_DATA *buf) {
+  LSM6XX_RAW raw_buff;
+  if (lsm6xx_get_gyro_raw(&raw_buff) != LSM6XX_FAIL) {
+    float sf = lsm6xx_get_gy_sensitivity(cur_xl_fs);
+
+    buf->x = raw_buff.x * sf;
+    buf->y = raw_buff.y * sf;
+    buf->z = raw_buff.z * sf;
+
+    return LSM6XX_OK;
+
+  } else {
+    return LSM6XX_FAIL;
+  }
+}
+
+static int32_t lsm6xx_collect_samples(uint8_t axis, uint8_t samples) {
+  int32_t running_total = 0;
+  LSM6XX_RAW data;
+
+  for (uint8_t i = 0; i < samples; i++) {
+    lsm6xx_get_accel_raw(&data);
+    switch (axis) {
+    case 0:
+      running_total += data.x;
+      break;
+    case 1:
+      running_total += data.y;
+      break;
+    case 2:
+      running_total += data.z;
+      break;
+      break;
+    }
+    HAL_Delay(1);
+  }
+
+  return running_total;
+}
+
+LSM6XX_STATES LSM6XX_calibrate(LSM6XX_CAL *prev_cal) {
+  // set calibration register to be high definition
+
+  // Read current CTRL6_C register
+  uint8_t ctrl6_c;
+  lsm6xx_read_reg(REG_CTRL6_C, &ctrl6_c);
+
+  // Set high resolution offset mode (2^-10 g/LSB)
+  ctrl6_c |= (1 << 3);
+  lsm6xx_write_reg(REG_CTRL6_C, ctrl6_c);
+
+  // -----------------------
+  // CALIBRATE ACCELEROMETER
+  //        OVERVIEW
+  // -----------------------
+  // This function is only to be used in development
+  // This function takes 100 raw readings for each axis
+  // Place a breakpoint on the next line after each axis calibration
+  // Once each breakpoint is run, it will be saved to the IMU so no processing
+  // has to be done
+
+  // feel free to increase this value, but don't make it too high!
+  uint8_t CALIBRATION_SAMPLES = 100;
+
+  //------------------
+  // ACCEL CALIBRATION
+  //------------------
+
+  // check if we already have calibration data for the accel
+  // if we do just use that
+  if (prev_cal->xl_hw_x != 0) {
+    lsm6xx_write_reg(REG_X_OFS_USR, prev_cal->xl_hw_x);
+    lsm6xx_write_reg(REG_Y_OFS_USR, prev_cal->xl_hw_y);
+    lsm6xx_write_reg(REG_Z_OFS_USR, prev_cal->xl_hw_z);
+    // gyro calibration is software only
+    return LSM6XX_OK;
+  } else {
+    int32_t total;
+    int16_t cal_val_pos;
+    int16_t cal_val_neg;
+
+    float xl_sf = lsm6xx_get_xl_sensitivity(cur_xl_fs);
+
+    int8_t axis_update[3];
+
+    // loop through 3 axis
+    for (uint8_t axis = 0; axis < 3; axis++) {
+      // !! PLACE BREAKPOINT HERE !!
+      // !! PLACE FC FLAT ON SIDE (AXIS POSITIVE) !!
+      total = lsm6xx_collect_samples(axis, CALIBRATION_SAMPLES);
+      cal_val_pos = total / CALIBRATION_SAMPLES;
+
+      // !! PLACE BREAKPOINT HERE !!
+      // !! PLACE FC FLAT AND UPSIDE DOWN ON SIDE (AXIS NEGATIVE) !!
+
+      total = lsm6xx_collect_samples(axis, CALIBRATION_SAMPLES);
+      cal_val_neg = total / CALIBRATION_SAMPLES;
+
+      int16_t offset = cal_val_pos + cal_val_neg;
+
+      int8_t hw_offset = (offset * (xl_sf * 1000.0)) / 0.976f;
+
+      axis_update[axis] = hw_offset;
+
+      lsm6xx_write_reg(REG_X_OFS_USR + axis, hw_offset);
+    }
+
+    // update calibration struct for x values
+    prev_cal->xl_hw_x = axis_update[0];
+    prev_cal->xl_hw_y = axis_update[1];
+    prev_cal->xl_hw_z = axis_update[2];
+
+    //-----------------
+    // GYRO CALIBRATION
+    //-----------------
+
+    // !! PLACE BREAKPOINT HERE !!
+    // !! MAKE SURE THE FC IS COMPLETELY STILL !!
+
+    int32_t sum_x, sum_y, sum_z = 0;
+    LSM6XX_RAW gyro_data;
+
+    for (int i = 0; i < CALIBRATION_SAMPLES; i++) {
+      lsm6xx_get_gyro_raw(&gyro_data);
+
+      sum_x += gyro_data.x;
+      sum_y += gyro_data.y;
+      sum_z += gyro_data.z;
+
+      HAL_Delay(1);
+    }
+
+    prev_cal->g_sw_x = sum_x / CALIBRATION_SAMPLES;
+    prev_cal->g_sw_y = sum_y / CALIBRATION_SAMPLES;
+    prev_cal->g_sw_z = sum_z / CALIBRATION_SAMPLES;
+
+    return LSM6XX_OK;
+  }
 }

@@ -141,20 +141,20 @@ extern "C" {
 // =======================
 // States and Enums
 // =======================
-typedef enum lsm_states {
+typedef enum {
   LSM6XX_OK,
   LSM6XX_FAIL,
   LSM6XX_BUSY,
 } LSM6XX_STATES;
 
-typedef enum lsm_accel_ranges {
+typedef enum {
   LSM_ACCEL_4G = 0,
   LSM_ACCEL_32G = 1,
   LSM_ACCEL_8G = 2,
   LSM_ACCEL_16G = 3
-} LSM6XX_ACCEL_RANGE;
+} LSM6XX_ACCEL_FS;
 
-typedef enum lsm_gyro_ranges {
+typedef enum {
   // register map is FS[1:0], FS_125
   // for some reason
   // if we combine it to be [FS, FS, FS_125], less overhead for driver
@@ -162,12 +162,12 @@ typedef enum lsm_gyro_ranges {
   // i.e. value of 0 maps to [0, 0, 0]
   // value of 4 maps to [1, 0, 0]
   // enums by default ascend numerically but we need to skip a few numbers
-  LSM_GYRO_250,
-  LSM_GYO_125,
-  LSM_GYRO_500,
+  LSM_GYRO_250 = 0,
+  LSM_GYRO_125 = 1,
+  LSM_GYRO_500 = 2,
   LSM_GYRO_1000 = 4,
   LSM_GYRO_2000 = 6,
-} LSM6XX_GYRO_RANGE;
+} LSM6XX_GYRO_FS;
 
 typedef enum lsm_accel_rate {
   LSM_ACCEL_12HZ = 1,
@@ -181,7 +181,7 @@ typedef enum lsm_accel_rate {
   LSM_ACCEL_3K33HZ = 9,
   LSM_ACCEL_6K66HZ = 10,
   LSM_ACCEL_1HZ6 = 11,
-} LSM6XX_ACCEL_RATE;
+} LSM6XX_ACCEL_ODR;
 
 typedef enum lsm_gyro_rate {
   LSM_GYRO_12HZ = 1,
@@ -194,7 +194,7 @@ typedef enum lsm_gyro_rate {
   LSM_GYRO_1K66HZ = 8,
   LSM_GYRO_3K33HZ = 9,
   LSM_GYRO_6K66HZ = 10,
-} LSM6XX_GYRO_RATE;
+} LSM6XX_GYRO_ODR;
 
 typedef enum lsm_int_lines {
   INT1,
@@ -207,6 +207,31 @@ typedef enum lsm_freefall_thres {
   LSM_FF_438,
   LSM_FF_500,
 } LSM6XX_FF_THRES;
+
+// Data structure for raw sensor readings
+typedef struct {
+  int16_t x;
+  int16_t y;
+  int16_t z;
+} LSM6XX_RAW;
+
+// Data structure for scaled sensor readings
+typedef struct {
+  float x;
+  float y;
+  float z;
+} LSM6XX_DATA;
+
+// struct for calibration
+
+typedef struct {
+  int8_t xl_hw_x;
+  int8_t xl_hw_y;
+  int8_t xl_hw_z;
+  int16_t g_sw_x;
+  int16_t g_sw_y;
+  int16_t g_sw_z;
+} LSM6XX_CAL;
 
 // =======================
 // Public Functions
@@ -232,8 +257,7 @@ LSM6XX_Init(I2C_HandleTypeDef *xi2c);
  *           - OK: Acceleration correctly updated
  */
 
-LSM6XX_STATES LSM6XX_set_accel_config(LSM6XX_ACCEL_RANGE range,
-                                      LSM6XX_ACCEL_RATE rate);
+LSM6XX_STATES LSM6XX_set_accel_config(LSM6XX_ACCEL_FS fs, LSM6XX_ACCEL_ODR odr);
 
 /**
  * @brief  Sets gyroscope sensitivity
@@ -245,8 +269,7 @@ LSM6XX_STATES LSM6XX_set_accel_config(LSM6XX_ACCEL_RANGE range,
  *           - OK: Acceleration correctly updated
  */
 
-LSM6XX_STATES LSM6XX_set_gyro_config(LSM6XX_GYRO_RANGE range,
-                                     LSM6XX_GYRO_RATE rate);
+LSM6XX_STATES LSM6XX_set_gyro_config(LSM6XX_GYRO_FS fs, LSM6XX_GYRO_ODR odr);
 
 /**
  * @brief  Enables the free fall (FF) interrupt mask on the IMU
@@ -265,16 +288,17 @@ LSM6XX_STATES LSM6XX_set_ff(LSM6XX_INT int_line, LSM6XX_FF_THRES ff_thres);
  * you to place the IMU on each axis, to record a baseline This is then stored
  * in the IMU's register. This should only be done when developing, and not used
  * in any production code
+ * @param prev_cal: Previous calibration data
  * @retval Status:
  *           - FAILED: Couldn't connect to the sensor and update the values
  *           - OK: Baseline calibration completed.
  */
 
-LSM6XX_STATES LSM6XX_calibrate();
+LSM6XX_STATES LSM6XX_calibrate(LSM6XX_CAL *prev_cal);
 
 /**
  * @brief  Read latest acceleration data
- * @param  buf 3 length array buffer to read into.
+ * @param  buf 3 struct representing x,y and z directions
  * [0] = x_axis
  * [1] = y_axis
  * [2] = z_axis
@@ -282,19 +306,16 @@ LSM6XX_STATES LSM6XX_calibrate();
  *           - FAILED: No data returned
  *           - OK: Data OKfully returned
  */
-LSM6XX_STATES LSM6XX_get_accel(int16_t *buf);
+LSM6XX_STATES LSM6XX_get_accel(LSM6XX_DATA *buf);
 
 /**
  * @brief  Read latest gyroscope data
- * @param  buf 3 length array buffer to read into
- * [0] = x_axis
- * [1] = y_axis
- * [2] = z_axis
+ * @param  buf 3 struct representing x,y and z directions
  * @retval Status:
  *           - FAILED: No data returned
  *           - OK: Data OKfully returned
  */
-LSM6XX_STATES LSM6XX_get_gyro(int16_t *buf);
+LSM6XX_STATES LSM6XX_get_gyro(LSM6XX_DATA *buf);
 
 #ifdef __cplusplus
 }
