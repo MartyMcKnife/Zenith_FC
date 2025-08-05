@@ -51,7 +51,7 @@ DMA_HandleTypeDef hdma_spi1_rx;
 DMA_HandleTypeDef hdma_spi1_tx;
 
 /* USER CODE BEGIN PV */
-
+static bool moving = false;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -114,11 +114,20 @@ int main(void) {
   MS5607_ALTITUDE altitude;
 
   LSM6XX_Init(&hi2c2);
-  LSM6XX_set_accel_config(LSM_ACCEL_4G, LSM_ACCEL_6K66HZ);
-  LSM6XX_set_gyro_config(LSM_GYRO_1000, LSM_GYRO_6K66HZ);
+  LSM6XX_set_accel_config(LSM_ACCEL_8G, LSM_ACCEL_208HZ);
+  LSM6XX_set_gyro_config(LSM_GYRO_1000, LSM_GYRO_208HZ);
 
-  LSM6XX_CAL cal_set = {0};
+  LSM6XX_CAL cal_set = {.xl_hw_x = 20,
+                        .xl_hw_y = -50,
+                        .xl_hw_z = 44,
+                        .g_sw_x = 25,
+                        .g_sw_y = -10,
+                        .g_sw_z = -30};
+
   LSM6XX_calibrate(&cal_set);
+
+  LSM6XX_set_ff(INT1, LSM_FF_438, 2);
+
   LSM6XX_DATA accel_buff;
   LSM6XX_DATA gyro_buff;
   /* USER CODE END 2 */
@@ -129,11 +138,17 @@ int main(void) {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    // HAL_GPIO_TogglePin(STS_LED_GPIO_Port, STS_LED_Pin);
     get_altitude(&altitude, 102400);
     LSM6XX_get_accel(&accel_buff);
     LSM6XX_get_gyro(&gyro_buff);
-    HAL_Delay(500);
+    if (moving == true) {
+      HAL_GPIO_WritePin(STS_LED_GPIO_Port, STS_LED_Pin, GPIO_PIN_SET);
+      HAL_Delay(500);
+      HAL_GPIO_WritePin(STS_LED_GPIO_Port, STS_LED_Pin, GPIO_PIN_RESET);
+      moving = false;
+    }
+
+    HAL_Delay(2);
   }
   /* USER CODE END 3 */
 }
@@ -417,6 +432,14 @@ static void MX_GPIO_Init(void) {
 }
 
 /* USER CODE BEGIN 4 */
+// Interrupt handler for IMU INT1
+void HAL_GPIO_EXTI_Rising_Callback(uint16_t GPIO_Pin) {
+  // interrupt detected
+  if (GPIO_Pin == IMU_INT1_Pin) {
+    moving = true;
+  }
+  __NOP();
+}
 
 /* USER CODE END 4 */
 

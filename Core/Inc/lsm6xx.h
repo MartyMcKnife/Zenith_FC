@@ -203,9 +203,9 @@ typedef enum lsm_int_lines {
 
 // units are in mG (0.00981 m/s2)
 typedef enum lsm_freefall_thres {
-  LSM_FF_312,
-  LSM_FF_438,
-  LSM_FF_500,
+  LSM_FF_312 = 0,
+  LSM_FF_438 = 1,
+  LSM_FF_500 = 2,
 } LSM6XX_FF_THRES;
 
 // Data structure for raw sensor readings
@@ -275,12 +275,14 @@ LSM6XX_STATES LSM6XX_set_gyro_config(LSM6XX_GYRO_FS fs, LSM6XX_GYRO_ODR odr);
  * @brief  Enables the free fall (FF) interrupt mask on the IMU
  * @param  int_line which interrupt pin
  * @param ff_thres trigger point for the interrupt
+ * @param duration ODR interval to sample over. max 4 bits
  * @retval Status:
  *           - FAILED: Couldn't enable pin
  *           - OK: Interrupt mask correctly set
  */
 
-LSM6XX_STATES LSM6XX_set_ff(LSM6XX_INT int_line, LSM6XX_FF_THRES ff_thres);
+LSM6XX_STATES LSM6XX_set_ff(LSM6XX_INT int_line, LSM6XX_FF_THRES ff_thres,
+                            uint8_t duration);
 
 /**
  * @brief  Calibrates both accel and gyroscope values. This only has to be done
@@ -316,6 +318,8 @@ LSM6XX_STATES LSM6XX_get_accel(LSM6XX_DATA *buf);
  *           - OK: Data OKfully returned
  */
 LSM6XX_STATES LSM6XX_get_gyro(LSM6XX_DATA *buf);
+
+uint8_t free_fall_detect();
 
 #ifdef __cplusplus
 }

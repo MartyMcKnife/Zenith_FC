@@ -23,6 +23,7 @@ static I2C_HandleTypeDef *l_hi2c;
 static uint8_t lsm_addr = LSM6XX_ADR << 1;
 static uint8_t cur_xl_fs;
 static uint8_t cur_g_fs;
+static LSM6XX_CAL *cur_cal = {0};
 
 // Handlers for Read/Write
 static HAL_StatusTypeDef lsm6xx_write_reg(uint8_t reg, uint8_t value) {
@@ -148,7 +149,8 @@ LSM6XX_STATES LSM6XX_set_gyro_config(LSM6XX_GYRO_FS fs, LSM6XX_GYRO_ODR odr) {
   }
 }
 
-LSM6XX_STATES LSM6XX_set_ff(LSM6XX_INT int_line, LSM6XX_FF_THRES ff_thres) {
+LSM6XX_STATES LSM6XX_set_ff(LSM6XX_INT int_line, LSM6XX_FF_THRES ff_thres,
+                            uint8_t duration) {
 // enable interrupts globally - only on LSM6DSO32
 // not really sure why it is on the tap register
 #ifdef LSM6DSO32
@@ -163,13 +165,15 @@ LSM6XX_STATES LSM6XX_set_ff(LSM6XX_INT int_line, LSM6XX_FF_THRES ff_thres) {
     lsm6xx_write_reg(REG_MD2_CFG, (1 << 4));
   }
 
-  // set threshold
-  lsm6xx_write_reg(REG_FREE_FALL, ff_thres);
+  uint8_t cfg = (duration << 3) | (ff_thres);
+
+  // set config
+  lsm6xx_write_reg(REG_FREE_FALL, cfg);
 
   // check
   uint8_t chk_pkt;
   lsm6xx_read_reg(REG_FREE_FALL, &chk_pkt);
-  if (chk_pkt == ff_thres) {
+  if (chk_pkt == cfg) {
     return LSM6XX_OK;
   } else {
     return LSM6XX_FAIL;
@@ -228,9 +232,10 @@ LSM6XX_STATES lsm6xx_get_gyro_raw(LSM6XX_RAW *buf) {
     return LSM6XX_FAIL;
   }
 
-  buf->x = (int16_t)(raw_data[1] << 8 | raw_data[0]);
-  buf->y = (int16_t)(raw_data[3] << 8 | raw_data[2]);
-  buf->z = (int16_t)(raw_data[5] << 8 | raw_data[4]);
+  // take into account calibration readings
+  buf->x = (int16_t)(raw_data[1] << 8 | raw_data[0]) - cur_cal->g_sw_x;
+  buf->y = (int16_t)(raw_data[3] << 8 | raw_data[2]) - cur_cal->g_sw_y;
+  buf->z = (int16_t)(raw_data[5] << 8 | raw_data[4]) - cur_cal->g_sw_z;
 
   return LSM6XX_OK;
 }
@@ -276,15 +281,6 @@ static int32_t lsm6xx_collect_samples(uint8_t axis, uint8_t samples) {
 }
 
 LSM6XX_STATES LSM6XX_calibrate(LSM6XX_CAL *prev_cal) {
-  // set calibration register to be high definition
-
-  // Read current CTRL6_C register
-  uint8_t ctrl6_c;
-  lsm6xx_read_reg(REG_CTRL6_C, &ctrl6_c);
-
-  // Set high resolution offset mode (2^-10 g/LSB)
-  ctrl6_c |= (1 << 3);
-  lsm6xx_write_reg(REG_CTRL6_C, ctrl6_c);
 
   // -----------------------
   // CALIBRATE ACCELEROMETER
@@ -306,10 +302,14 @@ LSM6XX_STATES LSM6XX_calibrate(LSM6XX_CAL *prev_cal) {
   // check if we already have calibration data for the accel
   // if we do just use that
   if (prev_cal->xl_hw_x != 0) {
+    uint8_t res;
     lsm6xx_write_reg(REG_X_OFS_USR, prev_cal->xl_hw_x);
     lsm6xx_write_reg(REG_Y_OFS_USR, prev_cal->xl_hw_y);
     lsm6xx_write_reg(REG_Z_OFS_USR, prev_cal->xl_hw_z);
+
+    lsm6xx_read_reg(REG_Z_OFS_USR, &res);
     // gyro calibration is software only
+    cur_cal = prev_cal;
     return LSM6XX_OK;
   } else {
     int32_t total;
@@ -354,7 +354,9 @@ LSM6XX_STATES LSM6XX_calibrate(LSM6XX_CAL *prev_cal) {
     // !! PLACE BREAKPOINT HERE !!
     // !! MAKE SURE THE FC IS COMPLETELY STILL !!
 
-    int32_t sum_x, sum_y, sum_z = 0;
+    int32_t sum_x = 0;
+    int32_t sum_y = 0;
+    int32_t sum_z = 0;
     LSM6XX_RAW gyro_data;
 
     for (int i = 0; i < CALIBRATION_SAMPLES; i++) {
@@ -372,5 +374,17 @@ LSM6XX_STATES LSM6XX_calibrate(LSM6XX_CAL *prev_cal) {
     prev_cal->g_sw_z = sum_z / CALIBRATION_SAMPLES;
 
     return LSM6XX_OK;
+  }
+}
+
+uint8_t free_fall_detect() {
+  uint8_t reg;
+
+  lsm6xx_read_reg(REG_ALL_INT_SRC, &reg);
+
+  if ((reg & 0x01) == 1) {
+    return 1;
+  } else {
+    return 0;
   }
 }
