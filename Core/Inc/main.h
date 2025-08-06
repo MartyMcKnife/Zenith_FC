@@ -33,6 +33,7 @@ extern "C" {
 /* USER CODE BEGIN Includes */
 #include "lsm6xx.h"
 #include "ms5607.h"
+#include "w25qxx.h"
 
 /* USER CODE END Includes */
 
