@@ -59,7 +59,10 @@ static void MX_I2C2_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_SPI2_Init(void);
 /* USER CODE BEGIN PFP */
-
+static int16_t BQ27441_i2cWriteBytes(uint8_t DevAddress, uint8_t subAddress,
+                                     uint8_t *src, uint8_t count);
+static int16_t BQ27441_i2cReadBytes(uint8_t DevAddress, uint8_t subAddress,
+                                    uint8_t *dest, uint8_t count);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -132,6 +135,14 @@ int main(void) {
   W25QXX_HandleTypeDef w25qxx;
   HAL_SPI_Transmit(&hspi1, 0x55, 1, 10);
   w25qxx_init(&w25qxx, &hspi1, SPI1_CS_GPIO_Port, SPI1_CS_Pin);
+
+  BQ27441_ctx_t BQ27441 = {
+      .BQ27441_i2c_address = BQ72441_I2C_ADDRESS,
+      .read_reg = BQ27441_i2cReadBytes,
+      .write_reg = BQ27441_i2cWriteBytes,
+  };
+
+  BQ27441_init(&BQ27441);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -411,6 +422,25 @@ static void MX_GPIO_Init(void) {
 }
 
 /* USER CODE BEGIN 4 */
+// Definitions for BQ27441 IC
+static int16_t BQ27441_i2cWriteBytes(uint8_t DevAddress, uint8_t subAddress,
+                                     uint8_t *src, uint8_t count) {
+  if (HAL_I2C_Mem_Write(&hi2c1, (uint16_t)(DevAddress << 1), subAddress, 1, src,
+                        count, 50) == HAL_OK)
+    return true;
+  else
+    return false;
+}
+
+static int16_t BQ27441_i2cReadBytes(uint8_t DevAddress, uint8_t subAddress,
+                                    uint8_t *dest, uint8_t count) {
+  if (HAL_I2C_Mem_Read(&hi2c1, (uint16_t)(DevAddress << 1), subAddress, 1, dest,
+                       count, 50) == HAL_OK)
+    return true;
+  else
+    return false;
+}
+
 // Interrupt handler for IMU INT1
 void HAL_GPIO_EXTI_Rising_Callback(uint16_t GPIO_Pin) {
   // interrupt detected

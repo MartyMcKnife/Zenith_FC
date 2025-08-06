@@ -31,6 +31,7 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "bq27441.h"
 #include "lsm6xx.h"
 #include "ms5607.h"
 #include "w25qxx.h"

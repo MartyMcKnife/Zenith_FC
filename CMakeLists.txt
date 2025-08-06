@@ -51,6 +51,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     "Core/Src/ms5607.c"
     "Core/Src/lsm6xx.c"
     "Core/Src/w25qxx.c"
+    "Core/Src/bq27441.c"
 )
 
 # Add include paths
