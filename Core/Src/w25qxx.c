@@ -22,7 +22,6 @@
 #include "main.h"
 #include <string.h>
 
-
 #ifdef DEBUG
 #include <stdio.h>
 #include <stdlib.h>
@@ -66,7 +65,7 @@ static inline void cs_off(W25QXX_HandleTypeDef *w25qxx) {
 W25QXX_result_t w25qxx_transmit(W25QXX_HandleTypeDef *w25qxx, uint8_t *buf,
                                 uint32_t len) {
   W25QXX_result_t ret = W25QXX_Err;
-  if (HAL_SPI_Transmit(w25qxx->spiHandle, buf, len, HAL_MAX_DELAY) == HAL_OK) {
+  if (HAL_SPI_Transmit(w25qxx->spiHandle, buf, len, 10) == HAL_OK) {
     ret = W25QXX_Ok;
   }
   return ret;
@@ -78,7 +77,8 @@ W25QXX_result_t w25qxx_transmit(W25QXX_HandleTypeDef *w25qxx, uint8_t *buf,
 W25QXX_result_t w25qxx_receive(W25QXX_HandleTypeDef *w25qxx, uint8_t *buf,
                                uint32_t len) {
   W25QXX_result_t ret = W25QXX_Err;
-  if (HAL_SPI_Receive(w25qxx->spiHandle, buf, len, HAL_MAX_DELAY) == HAL_OK) {
+  HAL_StatusTypeDef recv_sig = HAL_SPI_Receive(w25qxx->spiHandle, buf, len, 10);
+  if (recv_sig == HAL_OK) {
     ret = W25QXX_Ok;
   }
   return ret;
