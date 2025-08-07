@@ -77,9 +77,6 @@ void Error_Handler(void);
 #define STS_LED_GPIO_Port GPIOA
 
 /* USER CODE BEGIN Private defines */
-#define bool uint8_t
-#define true 1
-#define false 0
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

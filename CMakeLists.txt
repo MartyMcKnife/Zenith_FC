@@ -43,20 +43,25 @@ add_subdirectory(cmake/stm32cubemx)
 # Link directories setup
 target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined library search paths
+
 )
 
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
-    "Core/Src/ms5607.c"
-    "Core/Src/lsm6xx.c"
-    "Core/Src/w25qxx.c"
-    "Core/Src/bq27441.c"
+    "Drivers/ms5607/ms5607.c"
+    "Drivers/lsm6xx/lsm6xx.c"
+    "Drivers/w25qxx/w25qxx.c"
+    "Drivers/bq27441/bq27441.c"
 )
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
+    "Drivers/ms5607"
+    "Drivers/lsm6xx"
+    "Drivers/w25qxx"
+    "Drivers/bq27441"
 )
 
 # Add project symbols (macros)
