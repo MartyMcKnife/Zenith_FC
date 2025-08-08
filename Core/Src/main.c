@@ -18,10 +18,15 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "app_fatfs.h"
 #include "usb_device.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "bq27441.h"
+#include "lsm6xx.h"
+#include "ms5607.h"
+#include "w25qxx.h"
 
 /* USER CODE END Includes */
 
@@ -87,7 +92,18 @@ int main(void) {
   HAL_Init();
 
   /* USER CODE BEGIN Init */
+  // call spi1 init here so we can initialize our storage device before the usb
+  // device that way we don't have to initialize anything and we are good to go
+  // when the host device starts making requests
 
+  MX_SPI1_Init();
+  // have genuinely no clue why
+  // but the storage chip does not function unless we transmit a dummy byte to
+  // it also requires us setting SPI to Mode 3? not really sure why, but it
+  // works :3 might be emc in pcb?
+
+  HAL_SPI_Transmit(&hspi1, 0x55, 1, 10);
+  w25qxx_init(&w25qxx, &hspi1, SPI1_CS_GPIO_Port, SPI1_CS_Pin);
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -104,9 +120,11 @@ int main(void) {
   MX_SPI1_Init();
   MX_SPI2_Init();
   MX_USB_Device_Init();
+  if (MX_FATFS_Init() != APP_OK) {
+    Error_Handler();
+  }
   /* USER CODE BEGIN 2 */
   // let everything come up
-  HAL_Delay(5);
   MS5607_Init(&hspi2, SPI2_CS_GPIO_Port, SPI2_CS_Pin);
   MS5607_ALTITUDE altitude;
 
@@ -128,14 +146,6 @@ int main(void) {
   LSM6XX_DATA accel_buff;
   LSM6XX_DATA gyro_buff;
 
-  // have genuinely no clue why
-  // but the storage chip does not function unless we transmit a dummy byte to
-  // it also requires us setting SPI to Mode 3? not really sure why, but it
-  // works :3 might be emc in pcb?
-  W25QXX_HandleTypeDef w25qxx;
-  HAL_SPI_Transmit(&hspi1, 0x55, 1, 10);
-  w25qxx_init(&w25qxx, &hspi1, SPI1_CS_GPIO_Port, SPI1_CS_Pin);
-
   BQ27441_ctx_t BQ27441 = {
       .BQ27441_i2c_address = BQ72441_I2C_ADDRESS,
       .read_reg = BQ27441_i2cReadBytes,
@@ -143,6 +153,8 @@ int main(void) {
   };
 
   BQ27441_init(&BQ27441);
+  BQ27441_setCapacity(1100);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
