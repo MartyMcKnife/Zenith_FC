@@ -1,89 +1,201 @@
-/**
- ******************************************************************************
- * @file           : w25qxx.h
- * @brief          : Minimal W25Qxx Library Header
- ******************************************************************************
- * @attention
+/*
+ * w25qxxx.h
  *
- * Copyright (c) 2022 - 2025 Lars Boegild Thomsen <lbthomsen@gmail.com>
- * All rights reserved.
- *
- * This software is licensed under terms that can be found in the LICENSE file
- * in the root directory of this software component.
- * If no LICENSE file comes with this software, it is provided AS-IS.
- *
- ******************************************************************************
+ *  Created on: Feb 13, 2022
+ *      Author: Maxiufeng
  */
 
-#ifndef W25QXX_H_
-#define W25QXX_H_
+/*
+ * 			W25Q64	 64M-bit ->  8M-Byte
+ * 			W25Q128	128M-bit -> 16M-Byte
+ * 			W25Q256	256M-bit -> 32M-Byte
+ */
+
+/**
+ * Use polling to transmit SPI data
+ */
+
+/**
+ * @brief Implement w25qxxx low-level operations using standard spi and HAL
+ *libraries Provides a set of interface functions for diskio.c through a
+ *function pointer structure If using FATFs, the following #define is set to 1
+ * 	   #define EN_SPI_FLASH_DISK_IO 	0	//1:enable
+ *spi_flash_disk_io 0:disable
+ */
+
+#ifndef INC_W25QXXX_H_
+#define INC_W25QXXX_H_
 
 #include "stm32g0xx_hal.h"
 
-#ifdef DEBUGxxx
-#define W25_DBG(...)                                                           \
-  printf(__VA_ARGS__);                                                         \
-  printf("\n")
-#else
-#define W25_DBG(...)
-#endif
+/* Extern variables ---------------------------------------------------------*/
+extern SPI_HandleTypeDef hspi1;
+#define hspi_flash hspi1
 
-#define W25QXX_VERSION "W25QXX ver. 0.01.00"
+#define SPI_CS_PORT GPIOB
+#define SPI_CS_PIN GPIO_PIN_2
 
-#define W25QXX_MANUFACTURER_GIGADEVICE 0xC8
-#define W25QXX_MANUFACTURER_WINBOND 0xEF
+/**
+ * @brief Indicate the equipment used
+ */
+typedef enum {
+  W25Q10 = 1,
+  W25Q20,
+  W25Q40,
+  W25Q80,
+  W25Q16,
+  W25Q32,
+  W25Q64,
+  W25Q128,
+  W25Q256,
+  W25Q512,
 
-#define W25QXX_DUMMY_BYTE 0xA5
-#define W25QXX_GET_ID 0x9F
-#define W25QXX_READ_DATA 0x03
-#define W25QXX_WRITE_ENABLE 0x06
-#define W25QXX_PAGE_PROGRAM 0x02
-#define W25QXX_SECTOR_ERASE 0x20
-#define W25QXX_CHIP_ERASE 0xc7
-#define W25QXX_READ_REGISTER_1 0x05
+} W25QXXX_ID_t;
+
+/**
+ * @brief W25Qxxx spi Command type define [unsigned char]
+ * 	Follow the dataSheet
+ */
+typedef enum {
+  CMD_DUMMY = (unsigned char)(0x00),
+
+  CMD_Write_Enable = (unsigned char)(0x06),
+  CMD_Write_Enable_SR = (unsigned char)(0x50),
+  CMD_Write_Disable = (unsigned char)(0x04),
+  CMD_Release_Power_Down = (unsigned char)(0xAB),
+  CMD_Device_ID = (unsigned char)(0xAB),
+  CMD_Manufacture_ID = (unsigned char)(0x90),
+  CMD_JEDEC_ID = (unsigned char)(0x9F),
+  CMD_Unique_ID = (unsigned char)(0x4B),
+
+  CMD_Read_Data = (unsigned char)(0x03),
+  CMD_Fast_Read = (unsigned char)(0x0B),
+
+  CMD_Page_Program = (unsigned char)(0x02),
+
+  CMD_Erase_Sector = (unsigned char)(0x20),    //  4KB
+  CMD_Erase_Block_32K = (unsigned char)(0x52), // 32KB
+  CMD_Erase_Block_64K = (unsigned char)(0xD8), // 64KB
+  CMD_Erase_Chip = (unsigned char)(0xC7),      // chip
+
+  CMD_Reg_1_Read = (unsigned char)(0x05),
+  CMD_Reg_1_Write = (unsigned char)(0x01),
+  CMD_Reg_2_Read = (unsigned char)(0x35),
+  CMD_Reg_2_Write = (unsigned char)(0x31),
+  CMD_Reg_3_Read = (unsigned char)(0x15),
+  CMD_Reg_3_Write = (unsigned char)(0x11),
+
+  CMD_Read_SFDP_Reg = (unsigned char)(0x5A),
+  CMD_Erase_Security_Reg = (unsigned char)(0x44),
+  CMD_Program_Security_Reg = (unsigned char)(0x42),
+  CMD_Read_Security_Reg = (unsigned char)(0x48),
+
+  CMD_Global_Block_Lock = (unsigned char)(0x7E),
+  CMD_Global_Block_Unlock = (unsigned char)(0x98),
+  CMD_Read_Block_Lock = (unsigned char)(0x3D),
+  CMD_Individual_Block_Lock = (unsigned char)(0x36),
+  CMD_Individual_Block_Unlock = (unsigned char)(0x39),
+
+  CMD_Erase_Program_Suspend = (unsigned char)(0x75),
+  CMD_Erase_Program_Resume = (unsigned char)(0x7A),
+  CMD_Power_Down = (unsigned char)(0xB9),
+
+  CMD_Enable_Reset = (unsigned char)(0x66),
+  CMD_Reset_Device = (unsigned char)(0x99),
+
+  /* 4 Byte Address Mode Instructions <high capacity> */
+  CMD_Read_Data_4_Byte_Addr = (unsigned char)(0x13),
+  CMD_Fast_Read_4_Byte_Addr = (unsigned char)(0x0C),
+
+  CMD_Page_Program_4_Byte_Addr = (unsigned char)(0x12),
+
+  CMD_Erase_Sector_4_Byte_Addr = (unsigned char)(0x21),    // 4KB
+  CMD_Erase_Block_64K_4_Byte_Addr = (unsigned char)(0xDC), // 64KB
+
+  CMD_Read_Ex_Addr_Reg = (unsigned char)(0xC8),
+  CMD_Write_Ex_Addr_Reg = (unsigned char)(0xC5),
+
+  CMD_Enter_4_Byte_Addr_Mode = (unsigned char)(0xB7),
+  CMD_Exit_4_Byte_Addr_Mode = (unsigned char)(0xE9),
+} W25QxxxCMD_TypeDef;
+
+/**
+ * @brief W25Qxxx Status Register bit mask
+ */
+typedef enum {
+  SR1_S0_BUSY =
+      (unsigned char)(1 << 0), // Erase/Write In Progress (BUSY) – Status Only
+  SR1_S1_WEL =
+      (unsigned char)(1 << 1), // Write Enable Latch (WEL) – Status Only
+
+  SR2_S9_QE = (unsigned char)(1 << 1), // Quad Enable (QE) –
+                                       // Volatile/Non-Volatile Writable
+  SR2_S15_SUS =
+      (unsigned char)(1
+                      << 7), // Erase/Program Suspend Status (SUS) – Status Only
+
+  SR3_S18_WPS = (unsigned char)(1 << 3), // Write Protect Selection (WPS) –
+                                         // Volatile/Non-Volatile Writable
+
+  /* 4 Byte Address Mode Instructions <high capacity> */
+  SR3_S16_ADS =
+      (unsigned char)(1 << 0), // Current Address Mode (ADS) – Status Only
+  SR3_S17_ADP = (unsigned char)(1 << 1), // Power-Up Address Mode (ADP) –
+                                         // Non-Volatile Writable
+
+  /* high capacity flash  Extended Address Register */
+  SR_ADDR_EX_A24_EA0 = (unsigned char)(1 << 0),
+  SR_ADDR_EX_A25_EA1 = (unsigned char)(1 << 1),
+} W25QxxxSRBitMask_TypeDef;
+
+uint8_t W25Qxxx_Read_REG_x(uint8_t reg_x);
+void W25Qxxx_Write_REG_x(uint8_t reg_x, uint8_t data);
+
+uint8_t W25Qxxx_Init(void);
+uint8_t W25Qxxx_EraseChip(void);
+uint8_t W25Qxxx_EraseSector(uint32_t SectorAddr);
+uint8_t W25Qxxx_EraseBlock(uint32_t BlockAddr);
+uint8_t W25Qxxx_WriteByte(const uint8_t pBuffer, uint32_t WriteAddr_inBytes);
+uint8_t W25Qxxx_WritePage(const uint8_t *pBuffer, uint32_t Page_Address,
+                          uint32_t OffsetInByte,
+                          uint32_t NumByteToWrite_up_to_PageSize);
+uint8_t W25Qxxx_WriteSector(const uint8_t *pBuffer, uint32_t Sector_Address,
+                            uint32_t OffsetInByte,
+                            uint32_t NumByteToWrite_up_to_SectorSize);
+uint8_t W25Qxxx_WriteBlock(const uint8_t *pBuffer, uint32_t Block_Address,
+                           uint32_t OffsetInByte,
+                           uint32_t NumByteToWrite_up_to_BlockSize);
+uint8_t W25Qxxx_ReadByte(uint8_t *pBuffer, uint32_t Bytes_Address);
+uint8_t W25Qxxx_ReadBytes(uint8_t *pBuffer, uint32_t ReadAddr,
+                          uint32_t NumByteToRead);
+uint8_t W25Qxxx_ReadPage(uint8_t *pBuffer, uint32_t Page_Address,
+                         uint32_t OffsetInByte,
+                         uint32_t NumByteToRead_up_to_PageSize);
+uint8_t W25Qxxx_ReadSector(uint8_t *pBuffer, uint32_t Sector_Address,
+                           uint32_t OffsetInByte,
+                           uint32_t NumByteToRead_up_to_SectorSize);
+uint8_t W25Qxxx_ReadBlock(uint8_t *pBuffer, uint32_t Block_Address,
+                          uint32_t OffsetInByte,
+                          uint32_t NumByteToRead_up_to_BlockSize);
+
+int8_t W25Qxxx_WaitForWriteEnd(void);
 
 typedef struct {
-#ifdef W25QXX_QSPI
-  QSPI_HandleTypeDef *qspiHandle;
-#else
-  SPI_HandleTypeDef *spiHandle;
-  GPIO_TypeDef *cs_port;
-  uint16_t cs_pin;
-#endif
-  uint8_t manufacturer_id;
-  uint16_t device_id;
-  uint32_t block_size;
-  uint32_t block_count;
-  uint32_t sector_size;
-  uint32_t sectors_in_block;
-  uint32_t page_size;
-  uint32_t pages_in_sector;
-} W25QXX_HandleTypeDef;
+  W25QXXX_ID_t W25Qxxx_ID;
+  uint8_t W25Qxxx_Device_ID;
+  uint16_t W25Qxxx_Manufacturer_Device_ID;
+  uint32_t W25Qxxx_JEDEC_ID;
+  uint8_t W25Qxxx_UniqID[8];
+  uint16_t W25Qxxx_PageSize;
+  uint32_t W25Qxxx_PageCount;
+  uint32_t W25Qxxx_SectorSize;
+  uint32_t W25Qxxx_SectorCount;
+  uint32_t W25Qxxx_BlockSize; // 64KB
+  uint32_t W25Qxxx_BlockCount;
+  uint32_t W25Qxxx_CapacityInKiloByte;
+} W25QXX_Handler;
 
-typedef enum {
-  W25QXX_Ok,     // 0
-  W25QXX_Err,    // 1
-  W25QXX_Timeout // 2
-} W25QXX_result_t;
+extern W25QXX_Handler w25qxx_handle;
+/* **************************************************** */
 
-#ifdef W25QXX_QSPI
-W25QXX_result_t w25qxx_init(W25QXX_HandleTypeDef *w25qxx,
-                            QSPI_HandleTypeDef *qhspi);
-#else
-W25QXX_result_t w25qxx_init(W25QXX_HandleTypeDef *w25qxx,
-                            SPI_HandleTypeDef *hspi, GPIO_TypeDef *cs_port,
-                            uint16_t cs_pin);
-#endif
-W25QXX_result_t w25qxx_read(W25QXX_HandleTypeDef *w25qxx, uint32_t address,
-                            uint8_t *buf, uint32_t len);
-W25QXX_result_t w25qxx_write(W25QXX_HandleTypeDef *w25qxx, uint32_t address,
-                             uint8_t *buf, uint32_t len);
-W25QXX_result_t w25qxx_erase(W25QXX_HandleTypeDef *w25qxx, uint32_t address,
-                             uint32_t len);
-W25QXX_result_t w25qxx_chip_erase(W25QXX_HandleTypeDef *w25qxx);
-
-#endif /* W25QXX_H_ */
-
-/*
- * vim: ts=4 et nowrap
- */
+#endif /* INC_W25QXXX_H_ */

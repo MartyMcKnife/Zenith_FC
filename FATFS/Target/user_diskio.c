@@ -1,20 +1,21 @@
 /* USER CODE BEGIN Header */
 /**
  ******************************************************************************
-  * @file    user_diskio.c
-  * @brief   This file includes a diskio driver skeleton to be completed by the user.
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2025 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
+ * @file    user_diskio.c
+ * @brief   This file includes a diskio driver skeleton to be completed by the
+ *user.
+ ******************************************************************************
+ * @attention
+ *
+ * Copyright (c) 2025 STMicroelectronics.
+ * All rights reserved.
+ *
+ * This software is licensed under terms that can be found in the LICENSE file
+ * in the root directory of this software component.
+ * If no LICENSE file comes with this software, it is provided AS-IS.
+ *
+ ******************************************************************************
+ */
  /* USER CODE END Header */
 
 #ifdef USE_OBSOLETE_USER_CODE_SECTION_0
@@ -33,8 +34,10 @@
 /* USER CODE BEGIN DECL */
 
 /* Includes ------------------------------------------------------------------*/
-#include <string.h>
 #include "ff_gen_drv.h"
+#include <string.h>
+
+#include "w25qxx.h"
 
 /* Private typedef -----------------------------------------------------------*/
 /* Private define ------------------------------------------------------------*/
@@ -81,8 +84,12 @@ DSTATUS USER_initialize (
 )
 {
   /* USER CODE BEGIN INIT */
-    Stat = STA_NOINIT;
-    return Stat;
+  Stat = STA_NOINIT;
+  // intialize chip
+  if (W25Qxxx_Init() == 0) {
+    Stat &= ~STA_NOINIT;
+  }
+  return Stat;
   /* USER CODE END INIT */
 }
 
@@ -96,8 +103,11 @@ DSTATUS USER_status (
 )
 {
   /* USER CODE BEGIN STATUS */
-    Stat = STA_NOINIT;
-    return Stat;
+  Stat = STA_NOINIT;
+  if ((W25Qxxx_Read_REG_x(1) & SR1_S0_BUSY) != SR1_S0_BUSY) {
+    Stat &= ~STA_NOINIT;
+  }
+  return Stat;
   /* USER CODE END STATUS */
 }
 
@@ -117,7 +127,15 @@ DRESULT USER_read (
 )
 {
   /* USER CODE BEGIN READ */
-    return RES_OK;
+  DRESULT res = RES_ERROR;
+  if (W25Qxxx_WaitForWriteEnd() != 0)
+    return res;
+
+  UINT sectorCount = count * w25qxx_handle.W25Qxxx_SectorSize;
+  if (W25Qxxx_ReadSector(buff, sector, 0, sectorCount) == 0) {
+    res = RES_OK;
+  }
+  return res;
   /* USER CODE END READ */
 }
 
@@ -138,8 +156,30 @@ DRESULT USER_write (
 )
 {
   /* USER CODE BEGIN WRITE */
-  /* USER CODE HERE */
-    return RES_OK;
+  DRESULT res = RES_ERROR;
+
+  /*
+   * ensure the SPI Flash is ready for a new operation
+   */
+
+  if (W25Qxxx_WaitForWriteEnd() != 0)
+    return res;
+
+  if (W25Qxxx_EraseSector(sector) != 0)
+    return res;
+
+  if (W25Qxxx_WaitForWriteEnd() != 0)
+    return res;
+
+  UINT sectorCount = count * w25qxx_handle.W25Qxxx_SectorSize;
+  if (W25Qxxx_WriteSector(buff, sector, 0, sectorCount) == 0) {
+    res = RES_OK;
+  }
+
+  if (W25Qxxx_WaitForWriteEnd() != 0)
+    return res;
+
+  return res;
   /* USER CODE END WRITE */
 }
 #endif /* _USE_WRITE == 1 */
@@ -159,8 +199,38 @@ DRESULT USER_ioctl (
 )
 {
   /* USER CODE BEGIN IOCTL */
-    DRESULT res = RES_ERROR;
-    return res;
+  DRESULT res = RES_ERROR;
+  if (Stat & STA_NOINIT)
+    return RES_NOTRDY;
+
+  switch (cmd) {
+  /* Make sure that no pending write process */
+  case CTRL_SYNC:
+    res = RES_OK;
+    break;
+
+  /* Get number of sectors on the disk (DWORD) */
+  case GET_SECTOR_COUNT:
+    *(DWORD *)buff = w25qxx_handle.W25Qxxx_SectorCount;
+    res = RES_OK;
+    break;
+
+  /* Get R/W sector size (WORD) */
+  case GET_SECTOR_SIZE:
+    *(WORD *)buff = w25qxx_handle.W25Qxxx_SectorSize;
+    res = RES_OK;
+    break;
+
+  /* Get erase block size in unit of sector (DWORD) */
+  case GET_BLOCK_SIZE:
+    *(DWORD *)buff = 1;
+    res = RES_OK;
+    break;
+
+  default:
+    res = RES_PARERR;
+  }
+  return res;
   /* USER CODE END IOCTL */
 }
 #endif /* _USE_IOCTL == 1 */

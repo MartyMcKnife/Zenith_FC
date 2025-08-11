@@ -53,7 +53,6 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     "Drivers/lsm6xx/lsm6xx.c"
     "Drivers/w25qxx/w25qxx.c"
     "Drivers/bq27441/bq27441.c"
-    "Middlewares/Third_Party/FatFs/src/drivers/w25qxx_diskio.c"
 
 
 )
@@ -66,7 +65,6 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     "Drivers/w25qxx"
     "Drivers/bq27441"
     "Core/Inc"
-    "Middlewares/Third_Party/FatFs/src/drivers"
 
 )
 

@@ -22,7 +22,7 @@
 #include "usbd_storage_if.h"
 
 /* USER CODE BEGIN INCLUDE */
-
+#include "w25qxx.h"
 /* USER CODE END INCLUDE */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -176,7 +176,12 @@ int8_t STORAGE_Init_FS(uint8_t lun)
 {
   /* USER CODE BEGIN 2 */
 
-  return (USBD_OK);
+  if (W25Qxxx_Init() == 0) {
+    return (USBD_OK);
+  } else {
+    return (USBD_FAIL);
+  }
+
   /* USER CODE END 2 */
 }
 
@@ -190,6 +195,8 @@ int8_t STORAGE_Init_FS(uint8_t lun)
 int8_t STORAGE_GetCapacity_FS(uint8_t lun, uint32_t *block_num, uint16_t *block_size)
 {
   /* USER CODE BEGIN 3 */
+  *block_num = w25qxx_handle.W25Qxxx_BlockSize;
+  *block_size = w25qxx_handle.W25Qxxx_BlockCount;
   return (USBD_OK);
   /* USER CODE END 3 */
 }
@@ -233,12 +240,13 @@ int8_t STORAGE_IsWriteProtected_FS(uint8_t lun)
 int8_t STORAGE_Read_FS(uint8_t lun, uint8_t *buf, uint32_t blk_addr, uint16_t blk_len)
 {
   /* USER CODE BEGIN 6 */
-  UNUSED(lun);
-  UNUSED(buf);
-  UNUSED(blk_addr);
-  UNUSED(blk_len);
+  if (W25Qxxx_ReadBlock(buf, blk_addr, blk_len, 10) == 0) {
+    return (USBD_OK);
 
-  return (USBD_OK);
+  } else {
+    return (USBD_FAIL);
+  }
+
   /* USER CODE END 6 */
 }
 
