@@ -528,7 +528,10 @@ uint8_t W25Qxxx_WritePage(const uint8_t *pBuffer, uint32_t Page_Address,
 
   W25Qxxx_WaitForWriteEnd();
 
-  HAL_Delay(1);
+  // tiny loop to let device reset
+
+  for (uint8_t i = 0; i < 20; i++) {
+  }
 
   return 0;
 }
