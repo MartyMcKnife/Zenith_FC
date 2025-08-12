@@ -40,11 +40,13 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* Private define ------------------------------------------------------------*/
+#define STORAGE_BLK_SIZ 512
+#define FLASH_SECTOR_SIZE 4096
 
 /* Private variables ---------------------------------------------------------*/
 /* Disk status */
 static volatile DSTATUS Stat = STA_NOINIT;
-static uint8_t temp_sector_buf[4096];
+static uint8_t temp_sector_buf[4096] = {0};
 
 /* USER CODE END DECL */
 
@@ -122,7 +124,8 @@ DRESULT USER_read(BYTE pdrv,  /* Physical drive nmuber to identify the drive */
   DRESULT res = RES_ERROR;
 
   UINT sectorCount = count * w25qxx_handle.W25Qxxx_SectorSize;
-  if (W25Qxxx_ReadBytes(buff, sector * 512, (uint32_t)count * 512) == 0) {
+  if (W25Qxxx_ReadBytes(buff, sector * STORAGE_BLK_SIZ,
+                        (uint32_t)count * STORAGE_BLK_SIZ) == 0) {
     res = RES_OK;
   }
   return res;
@@ -146,19 +149,21 @@ DRESULT USER_write(BYTE pdrv, /* Physical drive nmuber to identify the drive */
   /* USER CODE BEGIN WRITE */
   DRESULT res = RES_OK;
 
-  uint32_t byte_addr = sector * 512;
-  uint32_t bytes_remaining = (uint32_t)count * 512;
+  uint32_t byte_addr = sector * STORAGE_BLK_SIZ;
+  uint32_t bytes_remaining = (uint32_t)count * STORAGE_BLK_SIZ;
   uint32_t buf_offset = 0;
 
   while (bytes_remaining > 0) {
-    uint32_t sector_index = byte_addr / 512;  // sector number
-    uint32_t sector_offset = byte_addr % 512; // offset within sector
-    uint32_t chunk = 512 - sector_offset;
+    uint32_t sector_index = byte_addr / FLASH_SECTOR_SIZE; // sector number
+    uint32_t sector_offset =
+        byte_addr % FLASH_SECTOR_SIZE; // offset within sector
+    uint32_t chunk = FLASH_SECTOR_SIZE - sector_offset;
     if (chunk > bytes_remaining)
       chunk = bytes_remaining;
 
     /* read the whole sector to temp buffer */
-    if (W25Qxxx_ReadSector(temp_sector_buf, sector_index, 0, 512) != 0) {
+    if (W25Qxxx_ReadSector(temp_sector_buf, sector_index, 0,
+                           FLASH_SECTOR_SIZE) != 0) {
       res = RES_ERROR;
       break;
     }
@@ -171,7 +176,8 @@ DRESULT USER_write(BYTE pdrv, /* Physical drive nmuber to identify the drive */
       res = RES_ERROR;
       break;
     }
-    if (W25Qxxx_WriteSector(temp_sector_buf, sector_index, 0, 512) != 0) {
+    if (W25Qxxx_WriteSector(temp_sector_buf, sector_index, 0,
+                            FLASH_SECTOR_SIZE) != 0) {
       res = RES_ERROR;
       break;
     }
