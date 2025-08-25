@@ -142,33 +142,12 @@ int main(void) {
       .write_reg = BQ27441_i2cWriteBytes,
   };
 
+  // configure BQ27441 for our 1100mAh battery
   BQ27441_init(&BQ27441);
-  BQ27441_setCapacity(1100);
-
-  FATFS fs; /* File system object for User logical drive */
-  FIL file; /* File object */
-  FRESULT fres;
-
-  UINT ww[1];
-  uint8_t wtext[] = "Hello from the STM32";
-
-  uint8_t buffer[200] = {0};
-  UINT bw[1];
-
-  fres = f_mount(&fs, "0:", 1);
-  if (fres == FR_OK) {
-    // fres = f_open(&file, "stm32.txt", FA_OPEN_ALWAYS | FA_WRITE);
-    // fres = f_write(&file, wtext, sizeof(wtext), ww);
-    // fres = f_close(&file);
-    fres = f_open(&file, "stm32.txt", FA_OPEN_ALWAYS | FA_READ);
-    fres = f_read(&file, buffer, f_size(&file), bw);
-    fres = f_close(&file);
-  } else {
-    // file system has not been created yet. format
-    static uint8_t buffer[_MAX_SS];
-    fres = f_mkfs("0:", FM_ANY, 0, buffer, sizeof(buffer));
-  }
-  fres = f_mount(NULL, "0:", 1);
+  BQ27441_setCapacity(BATTERY_CAPACITY);
+  BQ27441_setDesignEnergy(BATTERY_CAPACITY * 3.7);
+  BQ27441_setTerminateVoltageMin(MIN_VOLTAGE);
+  BQ27441_setTaperRateVoltage(MAX_VOLTAGE);
 
   /* USER CODE END 2 */
 

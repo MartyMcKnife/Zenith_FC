@@ -41,7 +41,9 @@ extern "C" {
 
 /* Exported constants --------------------------------------------------------*/
 /* USER CODE BEGIN EC */
-
+#define BATTERY_CAPACITY 1100
+#define MIN_VOLTAGE 2500
+#define MAX_VOLTAGE 4300
 /* USER CODE END EC */
 
 /* Exported macro ------------------------------------------------------------*/
