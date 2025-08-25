@@ -34,19 +34,15 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "ff_gen_drv.h"
+#include "w25qxx_fatfs.h"
 #include <string.h>
-
-#include "w25qxx.h"
 
 /* Private typedef -----------------------------------------------------------*/
 /* Private define ------------------------------------------------------------*/
-#define STORAGE_BLK_SIZ 512
-#define FLASH_SECTOR_SIZE 4096
 
 /* Private variables ---------------------------------------------------------*/
 /* Disk status */
 static volatile DSTATUS Stat = STA_NOINIT;
-static uint8_t temp_sector_buf[4096] = {0};
 
 /* USER CODE END DECL */
 
@@ -82,11 +78,12 @@ DSTATUS
 USER_initialize(BYTE pdrv /* Physical drive nmuber to identify the drive */
 ) {
   /* USER CODE BEGIN INIT */
+  UNUSED(pdrv);
   Stat = STA_NOINIT;
-  // intialize chip
-  if (W25Qxxx_Init() == 0) {
+  if (storage_init() == 0) {
     Stat &= ~STA_NOINIT;
   }
+
   return Stat;
   /* USER CODE END INIT */
 }
@@ -99,8 +96,9 @@ USER_initialize(BYTE pdrv /* Physical drive nmuber to identify the drive */
 DSTATUS USER_status(BYTE pdrv /* Physical drive number to identify the drive */
 ) {
   /* USER CODE BEGIN STATUS */
+  UNUSED(pdrv);
   Stat = STA_NOINIT;
-  if ((W25Qxxx_Read_REG_x(1) & SR1_S0_BUSY) != SR1_S0_BUSY) {
+  if (storage_is_ready() == 0) {
     Stat &= ~STA_NOINIT;
   }
   return Stat;
@@ -121,13 +119,12 @@ DRESULT USER_read(BYTE pdrv,  /* Physical drive nmuber to identify the drive */
                   UINT count    /* Number of sectors to read */
 ) {
   /* USER CODE BEGIN READ */
+  UNUSED(pdrv);
   DRESULT res = RES_ERROR;
-
-  UINT sectorCount = count * w25qxx_handle.W25Qxxx_SectorSize;
-  if (W25Qxxx_ReadBytes(buff, sector * STORAGE_BLK_SIZ,
-                        (uint32_t)count * STORAGE_BLK_SIZ) == 0) {
+  if (storage_read(buff, sector, count) == 0) {
     res = RES_OK;
   }
+
   return res;
   /* USER CODE END READ */
 }
@@ -147,44 +144,11 @@ DRESULT USER_write(BYTE pdrv, /* Physical drive nmuber to identify the drive */
                    UINT count        /* Number of sectors to write */
 ) {
   /* USER CODE BEGIN WRITE */
-  DRESULT res = RES_OK;
-
-  uint32_t byte_addr = sector * STORAGE_BLK_SIZ;
-  uint32_t bytes_remaining = (uint32_t)count * STORAGE_BLK_SIZ;
-  uint32_t buf_offset = 0;
-
-  while (bytes_remaining > 0) {
-    uint32_t sector_index = byte_addr / FLASH_SECTOR_SIZE; // sector number
-    uint32_t sector_offset =
-        byte_addr % FLASH_SECTOR_SIZE; // offset within sector
-    uint32_t chunk = FLASH_SECTOR_SIZE - sector_offset;
-    if (chunk > bytes_remaining)
-      chunk = bytes_remaining;
-
-    /* read the whole sector to temp buffer */
-    if (W25Qxxx_ReadSector(temp_sector_buf, sector_index, 0,
-                           FLASH_SECTOR_SIZE) != 0) {
-      res = RES_ERROR;
-      break;
-    }
-
-    /* modify only the part we intend to write */
-    memcpy(&temp_sector_buf[sector_offset], &buff[buf_offset], chunk);
-
-    /* erase sector then write it back */
-    if (W25Qxxx_EraseSector(sector_index) != 0) {
-      res = RES_ERROR;
-      break;
-    }
-    if (W25Qxxx_WriteSector(temp_sector_buf, sector_index, 0,
-                            FLASH_SECTOR_SIZE) != 0) {
-      res = RES_ERROR;
-      break;
-    }
-
-    byte_addr += chunk;
-    buf_offset += chunk;
-    bytes_remaining -= chunk;
+  /* USER CODE HERE */
+  UNUSED(pdrv);
+  DRESULT res = RES_ERROR;
+  if (storage_write(buff, sector, count) == 0) {
+    res = RES_OK;
   }
 
   return res;
@@ -205,6 +169,7 @@ DRESULT USER_ioctl(BYTE pdrv, /* Physical drive nmuber (0..) */
                    void *buff /* Buffer to send/receive control data */
 ) {
   /* USER CODE BEGIN IOCTL */
+  UNUSED(pdrv);
   DRESULT res = RES_ERROR;
   if (Stat & STA_NOINIT)
     return RES_NOTRDY;
@@ -217,13 +182,13 @@ DRESULT USER_ioctl(BYTE pdrv, /* Physical drive nmuber (0..) */
 
   /* Get number of sectors on the disk (DWORD) */
   case GET_SECTOR_COUNT:
-    *(DWORD *)buff = w25qxx_handle.W25Qxxx_SectorCount;
+    *(DWORD *)buff = get_sector_count();
     res = RES_OK;
     break;
 
   /* Get R/W sector size (WORD) */
   case GET_SECTOR_SIZE:
-    *(WORD *)buff = w25qxx_handle.W25Qxxx_SectorSize;
+    *(WORD *)buff = get_sector_size();
     res = RES_OK;
     break;
 

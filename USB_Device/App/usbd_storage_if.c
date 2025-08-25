@@ -22,7 +22,7 @@
 #include "usbd_storage_if.h"
 
 /* USER CODE BEGIN INCLUDE */
-#include "w25qxx.h"
+#include "w25qxx_fatfs.h"
 /* USER CODE END INCLUDE */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -171,7 +171,7 @@ USBD_StorageTypeDef USBD_Storage_Interface_fops_FS = {
  */
 int8_t STORAGE_Init_FS(uint8_t lun) {
   /* USER CODE BEGIN 2 */
-
+  UNUSED(lun);
   // Device should already be initialized
   return (USBD_OK);
 
@@ -188,9 +188,13 @@ int8_t STORAGE_Init_FS(uint8_t lun) {
 int8_t STORAGE_GetCapacity_FS(uint8_t lun, uint32_t *block_num,
                               uint16_t *block_size) {
   /* USER CODE BEGIN 3 */
-  *block_num = (w25qxx_handle.W25Qxxx_CapacityInKiloByte * 1024) / 512 - 1;
-  *block_size = 512;
-  return (USBD_OK);
+  UNUSED(lun);
+  if (storage_get_capacity(block_num, block_size) == 0) {
+    return (USBD_OK);
+  } else {
+    return (USBD_FAIL);
+  }
+
   /* USER CODE END 3 */
 }
 
@@ -213,6 +217,7 @@ int8_t STORAGE_IsReady_FS(uint8_t lun) {
  * @retval USBD_OK if all operations are OK else USBD_FAIL
  */
 int8_t STORAGE_IsWriteProtected_FS(uint8_t lun) {
+  /* USER CODE BEGIN 5 */
   UNUSED(lun);
 
   return (USBD_OK);
@@ -231,7 +236,7 @@ int8_t STORAGE_Read_FS(uint8_t lun, uint8_t *buf, uint32_t blk_addr,
                        uint16_t blk_len) {
   /* USER CODE BEGIN 6 */
   UNUSED(lun);
-  if (W25Qxxx_ReadBytes(buf, blk_addr * 512, blk_len * 512) == 0) {
+  if (storage_read(buf, blk_addr, blk_len) == 0) {
     return (USBD_OK);
 
   } else {
@@ -240,16 +245,6 @@ int8_t STORAGE_Read_FS(uint8_t lun, uint8_t *buf, uint32_t blk_addr,
 
   /* USER CODE END 6 */
 }
-
-// goofy aa chatgpt code below because i was doing this late at night and
-// couldn't be assed thinking could it be optimised yes can i be bothered no but
-// it works :)
-
-// on paper its really simple if the data we are writing takes up an entire
-// sector just write it to that sector otherwise we just read out that sector,
-// erase it, append our data to that sector and then write it
-// yes i could've written it by hand but oh well
-// could also be optimised but oh well
 
 /**
  * @brief  Writes data into the medium.
@@ -261,42 +256,19 @@ int8_t STORAGE_Read_FS(uint8_t lun, uint8_t *buf, uint32_t blk_addr,
  */
 int8_t STORAGE_Write_FS(uint8_t lun, uint8_t *buf, uint32_t blk_addr,
                         uint16_t blk_len) {
-/* USER CODE BEGIN 7 */
-#define FLASH_SECTOR_SIZE 4096 // W25Qxxx physical sector size
+  /* USER CODE BEGIN 7 */
   UNUSED(lun);
-  static uint8_t temp_sector_buf[FLASH_SECTOR_SIZE];
 
-  uint32_t byte_addr = blk_addr * STORAGE_BLK_SIZ;
-  uint32_t bytes_remaining = blk_len * STORAGE_BLK_SIZ;
-  uint32_t buf_offset = 0;
-
-  while (bytes_remaining > 0) {
-    uint32_t sector_index = byte_addr / FLASH_SECTOR_SIZE;
-    uint32_t sector_offset = byte_addr % FLASH_SECTOR_SIZE;
-    uint32_t chunk = FLASH_SECTOR_SIZE - sector_offset;
-    if (chunk > bytes_remaining)
-      chunk = bytes_remaining;
-
-    // Read whole sector into temp buffer
-    W25Qxxx_ReadSector(temp_sector_buf, sector_index, 0, FLASH_SECTOR_SIZE);
-
-    // Update relevant bytes
-    memcpy(&temp_sector_buf[sector_offset], &buf[buf_offset], chunk);
-
-    // Erase + rewrite
-    if (W25Qxxx_EraseSector(sector_index) != 0)
-      return USBD_FAIL;
-    if (W25Qxxx_WriteSector(temp_sector_buf, sector_index, 0,
-                            FLASH_SECTOR_SIZE) != 0)
-      return USBD_FAIL;
-
-    byte_addr += chunk;
-    buf_offset += chunk;
-    bytes_remaining -= chunk;
+  if (storage_write(buf, blk_addr, blk_len) == 0) {
+    return (USBD_OK);
+  } else {
+    return USBD_FAIL;
   }
 
-  return USBD_OK;
+  return (USBD_OK);
+  /* USER CODE END 7 */
 }
+
 /**
  * @brief  Returns the Max Supported LUNs.
  * @param  None

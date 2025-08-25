@@ -145,8 +145,6 @@ int main(void) {
   BQ27441_init(&BQ27441);
   BQ27441_setCapacity(1100);
 
-  W25Qxxx_Init();
-
   FATFS fs; /* File system object for User logical drive */
   FIL file; /* File object */
   FRESULT fres;
@@ -159,9 +157,9 @@ int main(void) {
 
   fres = f_mount(&fs, "0:", 1);
   if (fres == FR_OK) {
-    fres = f_open(&file, "stm32.txt", FA_OPEN_ALWAYS | FA_WRITE);
-    fres = f_write(&file, wtext, sizeof(wtext), ww);
-    fres = f_close(&file);
+    // fres = f_open(&file, "stm32.txt", FA_OPEN_ALWAYS | FA_WRITE);
+    // fres = f_write(&file, wtext, sizeof(wtext), ww);
+    // fres = f_close(&file);
     fres = f_open(&file, "stm32.txt", FA_OPEN_ALWAYS | FA_READ);
     fres = f_read(&file, buffer, f_size(&file), bw);
     fres = f_close(&file);
