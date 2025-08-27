@@ -31,12 +31,12 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "data_handler.h"
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
-
+typedef enum { PRE_LAUNCH, LAUNCH, LANDING, INIT_FAILURE } FLIGHT_STATES;
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/

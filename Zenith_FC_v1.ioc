@@ -2,8 +2,9 @@
 CAD.formats=[]
 CAD.pinconfig=Dual
 CAD.provider=
-FATFS.IPParameters=_MAX_SS
+FATFS.IPParameters=_MAX_SS,_USE_FIND
 FATFS._MAX_SS=512
+FATFS._USE_FIND=1
 File.Version=6
 GPIO.groupedBy=Group By Peripherals
 I2C1.IPParameters=Timing

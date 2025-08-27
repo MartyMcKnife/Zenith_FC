@@ -56,13 +56,12 @@ TIM_HandleTypeDef htim14;
 TIM_HandleTypeDef htim16;
 
 /* USER CODE BEGIN PV */
-static bool moving = false;
-static bool init_failure = false;
-static bool sample = false;
+FLIGHT_STATES flight_state = PRE_LAUNCH;
 
 // controls number of pulses for our led
 static uint8_t led_count = 0;
 static uint8_t led_total = 0;
+static bool enable_led = false;
 
 // store flight data in array, and flush it to a csv after flight - reduce
 // read/writes on flash take 1 sample every 100ms - array has 1800 rows,
@@ -72,9 +71,11 @@ static uint8_t led_total = 0;
 // data stored:
 // | pressure | altitude | temperature | raw_accel_x | raw_accel_y | raw_accel_z
 // | raw_gyro_x | raw_gyro_y | raw_gyro_z | voltage | current | soc |
-static int32_t init_data[12] = {0};
-static int32_t flight_data[1800][12] = {0};
+static float init_data[12] = {0};
+static float flight_data[1800][12] = {0};
 uint16_t sample_point = 0;
+bool take_sample = false;
+uint8_t flight_no = 0;
 
 /* USER CODE END PV */
 
@@ -144,28 +145,28 @@ int main(void) {
   /* USER CODE BEGIN 2 */
 
   // intialize I/O
-  MS5607_Init(&hspi2, SPI2_CS_GPIO_Port, SPI2_CS_Pin);
-  MS5607_ALTITUDE altitude_handler;
-  MS5607_PRESSURE pressure_handler;
+  if (MS5607_Init(&hspi2, SPI2_CS_GPIO_Port, SPI2_CS_Pin) == MS5607_FAIL) {
+    flight_state = INIT_FAILURE;
+  }
 
-  LSM6XX_Init(&hi2c2);
-  LSM6XX_set_accel_config(LSM_ACCEL_32G, LSM_ACCEL_208HZ);
-  LSM6XX_set_gyro_config(LSM_GYRO_1000, LSM_GYRO_208HZ);
+  if (LSM6XX_Init(&hi2c2) == LSM6XX_FAIL) {
+    flight_state = INIT_FAILURE;
+  } else {
+    LSM6XX_set_accel_config(LSM_ACCEL_32G, LSM_ACCEL_208HZ);
+    LSM6XX_set_gyro_config(LSM_GYRO_1000, LSM_GYRO_208HZ);
 
-  LSM6XX_CAL cal_set = {.xl_hw_x = 20,
-                        .xl_hw_y = -50,
-                        .xl_hw_z = 44,
-                        .g_sw_x = 25,
-                        .g_sw_y = -10,
-                        .g_sw_z = -30};
+    LSM6XX_CAL cal_set = {.xl_hw_x = 20,
+                          .xl_hw_y = -50,
+                          .xl_hw_z = 44,
+                          .g_sw_x = 25,
+                          .g_sw_y = -10,
+                          .g_sw_z = -30};
 
-  LSM6XX_calibrate(&cal_set);
+    LSM6XX_calibrate(&cal_set);
 
-  // TODO: Make sure triggers correctly for ignition
-  LSM6XX_set_ff(INT1, LSM_FF_500, 3);
-
-  LSM6XX_DATA accel_buff;
-  LSM6XX_DATA gyro_buff;
+    // TODO: Make sure triggers correctly for ignition
+    LSM6XX_set_ff(INT1, LSM_FF_500, 3);
+  }
 
   BQ27441_ctx_t BQ27441 = {
       .BQ27441_i2c_address = BQ72441_I2C_ADDRESS,
@@ -174,31 +175,24 @@ int main(void) {
   };
 
   // configure BQ27441 for our 1100mAh battery
-  BQ27441_init(&BQ27441);
-  BQ27441_setCapacity(BATTERY_CAPACITY);
-  BQ27441_setDesignEnergy(BATTERY_CAPACITY * 3.7);
-  BQ27441_setTerminateVoltageMin(MIN_VOLTAGE);
-  BQ27441_setTaperRateVoltage(MAX_VOLTAGE);
 
-  // basline readings
-  uint8_t readings[5];
-
-  get_pressure(&pressure_handler);
-
-  // check we have enough charge
-
-  if (BQ27441_soc(FILTERED) > 70) {
-    // blink twice if successful
-    blink_short(2);
+  if (BQ27441_init(&BQ27441) != true) {
+    flight_state = INIT_FAILURE;
   } else {
-    // blink three times if fail
-    blink_short(3);
-    init_failure = true;
+    BQ27441_setCapacity(BATTERY_CAPACITY);
+    BQ27441_setDesignEnergy(BATTERY_CAPACITY * 3.7);
+    BQ27441_setTerminateVoltageMin(MIN_VOLTAGE);
+    BQ27441_setTaperRateVoltage(MAX_VOLTAGE);
   }
 
-  uint16_t soc;
-  uint16_t volts;
-  int16_t cur;
+  // bq27441 needs to learn battery usage, give a sec
+  HAL_Delay(50);
+
+  // if battery not charged enough, flash warning
+  // not enough to trigger fail mode but we want to let user know
+  if (BQ27441_soc(FILTERED) < 70) {
+    blink_short(5);
+  }
 
   // mount fs
   FATFS fs;
@@ -206,22 +200,37 @@ int main(void) {
   FRESULT f_res;
   UINT bw[1];
 
+  DIR dj;
+  FILINFO fno;
+
   // try to mount fs, blink if we can't
   f_res = f_mount(&fs, "0:", 1);
 
   if (f_res != FR_OK) {
-    blink_short(3);
-    init_failure = true;
+    flight_state = INIT_FAILURE;
+  } else {
+    // intialize flight number
+    // calculate flight number - traverse root directory until all filenames
+    // read
+    f_res = f_findfirst(&dj, &fno, "0:", "fl_??.csv");
+
+    // if we can't find anything, intialize flight_no to 0
+    if (!fno.fname[0]) {
+      flight_no = 0;
+    } else {
+      while (f_res == FR_OK && fno.fname[0]) {
+        // digits are represented in ascii codes - subtract 48 to convert them
+        flight_no = ((fno.fname[3] - 48) * 10 + (fno.fname[4] - 48)) + 1;
+        f_res = f_findnext(&dj, &fno);
+      }
+    }
+
+    f_closedir(&dj);
   }
 
-  // get which flight number we are at - used to create new datasheet
-  uint8_t flight_no = 0;
+  // get initial readings
 
-  f_res = f_open(&fp, "0:/.data", FA_OPEN_ALWAYS | FA_READ);
-  if (f_res == FR_OK) {
-    f_read(&fp, &flight_no, sizeof(flight_no), bw);
-    f_close(&fp);
-  }
+  avg_samples(&init_data);
 
   /* USER CODE END 2 */
 
@@ -234,33 +243,12 @@ int main(void) {
 
     // sample every 100ms, when we are flying
     // triggered by timers
-    if (moving && sample && !init_failure) {
-      HAL_GPIO_TogglePin(STS_LED_GPIO_Port, STS_LED_Pin);
-      // get altitude
-      get_altitude(&altitude_handler, pressure_handler.pressure);
-      // get imu
-      LSM6XX_get_accel(&accel_buff);
-      LSM6XX_get_gyro(&gyro_buff);
-      // get battery
-      volts = BQ27441_voltage();
-      cur = BQ27441_current(AVG);
-      soc = BQ27441_soc(FILTERED);
-
-      // update flight data array
-      flight_data[sample_point][0] = altitude_handler.pressure;
-      flight_data[sample_point][1] = altitude_handler.altitude;
-      flight_data[sample_point][2] = altitude_handler.temp;
-      flight_data[sample_point][3] = accel_buff.x;
-      flight_data[sample_point][4] = accel_buff.y;
-      flight_data[sample_point][5] = accel_buff.z;
-      flight_data[sample_point][6] = gyro_buff.x;
-      flight_data[sample_point][7] = gyro_buff.y;
-      flight_data[sample_point][8] = gyro_buff.z;
-      flight_data[sample_point][9] = volts;
-      flight_data[sample_point][10] = cur;
-      flight_data[sample_point][11] = soc;
+    if (flight_state == LAUNCH && take_sample) {
+      // turn on LED whilst we are sampling
+      HAL_GPIO_WritePin(STS_LED_GPIO_Port, STS_LED_Pin, GPIO_PIN_SET);
 
       sample_point += 1;
+      HAL_GPIO_WritePin(STS_LED_GPIO_Port, STS_LED_Pin, GPIO_PIN_RESET);
     }
   }
   /* USER CODE END 3 */
@@ -608,38 +596,55 @@ static int16_t BQ27441_i2cReadBytes(uint8_t DevAddress, uint8_t subAddress,
 
 static void blink_short(uint8_t count) {
   led_total = count;
+  enable_led = true;
   HAL_TIM_Base_Start_IT(&htim14);
 }
 static void blink_long(uint8_t count) {
   led_total = count;
+  enable_led = true;
   HAL_TIM_Base_Start_IT(&htim16);
 }
 
 // Interrupt handler for IMU INT1
 void HAL_GPIO_EXTI_Rising_Callback(uint16_t GPIO_Pin) {
   // interrupt detected
-  if (GPIO_Pin == IMU_INT1_Pin && !init_failure) {
-    moving = true;
+  if (GPIO_Pin == IMU_INT1_Pin && flight_state != INIT_FAILURE) {
+    flight_state = LAUNCH;
+    sample_point = 0;
+    HAL_TIM_Base_Start_IT(&htim14);
   }
   __NOP();
 }
 
 // interrupt handler for timers
-// pulse time controlled by timers - TIM14 is 100ms, TIM16 is 500ms
-// actual logic will be same regardless
+// LED pulse time controlled by timers - TIM14 is 100ms, TIM16 is 500ms
+// TIM14 also handles setting sensor_update flag
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
-  // one pulse needs both on and off
-  // double the amount of pulses we want
-  // led_count is 0-indexed
-  if (led_count <= led_total * 2 - 1) {
-    HAL_GPIO_TogglePin(STS_LED_GPIO_Port, STS_LED_Pin);
-    led_count++;
-  } else {
-    // reset timer
-    led_total = 0;
-    led_count = 0;
-    HAL_TIM_Base_Stop_IT(htim);
+  // handle LED blinking
+  if (enable_led) {
+    // one pulse needs both on and off
+    // double the amount of pulses we want
+    // led_count is 0-indexed
+    if (led_count <= led_total * 2 - 1) {
+      HAL_GPIO_TogglePin(STS_LED_GPIO_Port, STS_LED_Pin);
+      led_count++;
+    } else {
+      // reset timer
+      led_total = 0;
+      led_count = 0;
+      enable_led = false;
+      // CAREFUL - only disable this timer when we aren't flying
+      // otherwise we stop our samples :/
+      // 500ms timer always disabled
+      if (htim == &htim16 || flight_state != LAUNCH) {
+        HAL_TIM_Base_Stop_IT(htim);
+      }
+    }
+  }
+  // if we are currently flying, take a sample
+  if (flight_state == LAUNCH) {
+    take_sample = true;
   }
 }
 
