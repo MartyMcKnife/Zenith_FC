@@ -215,7 +215,6 @@ int main(void) {
   FATFS fs;
   FIL fp;
   FRESULT f_res;
-  UINT bw[1];
 
   DIR dj;
   FILINFO fno;
