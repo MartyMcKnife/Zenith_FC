@@ -180,6 +180,12 @@ LSM6XX_STATES LSM6XX_set_ff(LSM6XX_INT int_line, LSM6XX_FF_THRES ff_thres,
   }
 }
 
+void LSM6XX_disable_ff() {
+  // disable interrupt register
+  lsm6xx_write_reg(REG_MD1_CFG, (0 << 4));
+  lsm6xx_write_reg(REG_MD2_CFG, (0 << 4));
+}
+
 LSM6XX_STATES lsm6xx_get_accel_raw(LSM6XX_RAW *buf) {
   // check to make sure accel data is ready to be processed (always should be)
   uint8_t chk_pkt;
@@ -281,7 +287,6 @@ static int32_t lsm6xx_collect_samples(uint8_t axis, uint8_t samples) {
 }
 
 LSM6XX_STATES LSM6XX_calibrate(LSM6XX_CAL *prev_cal) {
-
   // -----------------------
   // CALIBRATE ACCELEROMETER
   //        OVERVIEW

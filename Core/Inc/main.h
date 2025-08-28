@@ -36,7 +36,13 @@ extern "C" {
 
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
-typedef enum { PRE_LAUNCH, LAUNCH, LANDING, INIT_FAILURE } FLIGHT_STATES;
+typedef enum {
+  PRE_LAUNCH,
+  LAUNCH,
+  LANDING,
+  INIT_FAILURE,
+  DIAG,
+} FLIGHT_STATES;
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/

@@ -1,21 +1,21 @@
 /* USER CODE BEGIN Header */
 /**
-  ******************************************************************************
-  * @file           : usb_device.c
-  * @version        : v3.0_Cube
-  * @brief          : This file implements the USB Device
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2025 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
+ ******************************************************************************
+ * @file           : usb_device.c
+ * @version        : v3.0_Cube
+ * @brief          : This file implements the USB Device
+ ******************************************************************************
+ * @attention
+ *
+ * Copyright (c) 2025 STMicroelectronics.
+ * All rights reserved.
+ *
+ * This software is licensed under terms that can be found in the LICENSE file
+ * in the root directory of this software component.
+ * If no LICENSE file comes with this software, it is provided AS-IS.
+ *
+ ******************************************************************************
+ */
 /* USER CODE END Header */
 
 /* Includes ------------------------------------------------------------------*/
@@ -49,7 +49,13 @@ extern USBD_DescriptorsTypeDef MSC_Desc;
  * -- Insert your variables declaration here --
  */
 /* USER CODE BEGIN 0 */
-
+uint8_t is_usb_connected() {
+  if (hUsbDeviceFS.dev_state == USBD_STATE_CONFIGURED) {
+    return 1;
+  } else {
+    return 0;
+  }
+}
 /* USER CODE END 0 */
 
 /*
@@ -60,11 +66,10 @@ extern USBD_DescriptorsTypeDef MSC_Desc;
 /* USER CODE END 1 */
 
 /**
-  * Init USB device Library, add supported class and start the library
-  * @retval None
-  */
-void MX_USB_Device_Init(void)
-{
+ * Init USB device Library, add supported class and start the library
+ * @retval None
+ */
+void MX_USB_Device_Init(void) {
   /* USER CODE BEGIN USB_Device_Init_PreTreatment */
 
   /* USER CODE END USB_Device_Init_PreTreatment */
@@ -76,7 +81,8 @@ void MX_USB_Device_Init(void)
   if (USBD_RegisterClass(&hUsbDeviceFS, &USBD_MSC) != USBD_OK) {
     Error_Handler();
   }
-  if (USBD_MSC_RegisterStorage(&hUsbDeviceFS, &USBD_Storage_Interface_fops_FS) != USBD_OK) {
+  if (USBD_MSC_RegisterStorage(&hUsbDeviceFS,
+                               &USBD_Storage_Interface_fops_FS) != USBD_OK) {
     Error_Handler();
   }
   if (USBD_Start(&hUsbDeviceFS) != USBD_OK) {
@@ -88,10 +94,9 @@ void MX_USB_Device_Init(void)
 }
 
 /**
-  * @}
-  */
+ * @}
+ */
 
 /**
-  * @}
-  */
-
+ * @}
+ */

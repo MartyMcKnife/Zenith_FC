@@ -77,9 +77,9 @@ uint16_t sample_point = 0;
 bool take_sample = false;
 uint8_t flight_no = 0;
 
-uint32_t avg_height;
-uint32_t sq_values;
-uint32_t height_sd;
+float avg_height;
+float sq_values;
+float height_sd;
 
 /* USER CODE END PV */
 
@@ -148,13 +148,24 @@ int main(void) {
   MX_TIM16_Init();
   /* USER CODE BEGIN 2 */
 
+  // if we've connected a USB, don't worry about anything
+
+  if (is_usb_connected()) {
+    flight_state = DEBUG;
+  }
+  // tiny delay to let all the drivers initialize
+  HAL_Delay(50);
+
   // intialize I/O
   if (MS5607_Init(&hspi2, SPI2_CS_GPIO_Port, SPI2_CS_Pin) == MS5607_FAIL) {
     flight_state = INIT_FAILURE;
+    blink_long(2);
   }
 
   if (LSM6XX_Init(&hi2c2) == LSM6XX_FAIL) {
     flight_state = INIT_FAILURE;
+    blink_long(3);
+
   } else {
     LSM6XX_set_accel_config(LSM_ACCEL_32G, LSM_ACCEL_208HZ);
     LSM6XX_set_gyro_config(LSM_GYRO_1000, LSM_GYRO_208HZ);
@@ -182,6 +193,8 @@ int main(void) {
 
   if (BQ27441_init(&BQ27441) != true) {
     flight_state = INIT_FAILURE;
+    blink_long(4);
+
   } else {
     BQ27441_setCapacity(BATTERY_CAPACITY);
     BQ27441_setDesignEnergy(BATTERY_CAPACITY * 3.7);
@@ -206,17 +219,20 @@ int main(void) {
 
   DIR dj;
   FILINFO fno;
+  char fp_name[13];
 
   // try to mount fs, blink if we can't
   f_res = f_mount(&fs, "0:", 1);
 
   if (f_res != FR_OK) {
     flight_state = INIT_FAILURE;
+    blink_long(5);
+
   } else {
     // intialize flight number
     // calculate flight number - traverse root directory until all filenames
     // read
-    f_res = f_findfirst(&dj, &fno, "0:", "fl_??.csv");
+    f_res = f_findfirst(&dj, &fno, "0:", "FL_??.csv");
 
     // if we can't find anything, intialize flight_no to 0
     if (!fno.fname[0]) {
@@ -238,7 +254,7 @@ int main(void) {
 
   // init success
   if (flight_state == PRE_LAUNCH) {
-    blink_short(5);
+    blink_short(2);
   }
 
   /* USER CODE END 2 */
@@ -254,12 +270,19 @@ int main(void) {
       // blocking blink is fine
     case INIT_FAILURE:
       HAL_GPIO_TogglePin(STS_LED_GPIO_Port, STS_LED_Pin);
-      HAL_Delay(250);
+      HAL_Delay(500);
       break;
 
       // don't do anything in prelaunch - just waiting for IMU to say we are
       // flying
     case PRE_LAUNCH:
+      __NOP();
+      break;
+
+    // don't do anything when we are reading data
+    // could accidentally trigger flight
+    case DIAG:
+      __NOP();
       break;
 
       // handle sampling
@@ -274,25 +297,30 @@ int main(void) {
         // check to see if we have landed
         // landed is determined when current height sample is within 1 s.d. of
         // average height of last 5 samples
+        avg_height = 0;
+        height_sd = 0;
         if (sample_point >= 6) {
           // calculate average
           // get last 5 samples
           for (uint8_t i = 0; i < 5; i++) {
-            avg_height += flight_data[sample_point - 1 - i][1];
+
+            avg_height += (int32_t)flight_data[sample_point - 1 - i][1];
+            ;
           }
 
           avg_height /= 5;
 
           // calculate s.d.
           for (uint8_t i = 0; i < 5; i++) {
-            sq_values +=
-                pow(flight_data[sample_point - 1 - i][1] - avg_height, 2);
+            sq_values += pow(
+                (int32_t)flight_data[sample_point - 1 - i][1] - avg_height, 2);
           }
 
           height_sd = sqrt(sq_values / 5);
 
           // if current reading is inside +- 1s.d., switch to landing
-          if (abs(flight_data[sample_point][1] - avg_height) <= height_sd) {
+          if (fabs((int32_t)flight_data[sample_point][1] - avg_height) <=
+              height_sd) {
             flight_state = LANDING;
             break;
           }
@@ -306,20 +334,45 @@ int main(void) {
     // landing state caused by flight array overflow or successful detection,
     // whichever comes first
     case LANDING:
-      char fp_name[13];
       sprintf(fp_name, "fl_%02d.csv", flight_no);
       f_res = f_open(&fp, fp_name, FA_CREATE_ALWAYS | FA_WRITE);
       if (f_res == FR_OK) {
-        f_puts("INIT DATA", &fp);
-        f_write(&fp, init_data, sizeof(init_data), bw);
-        f_puts("FLIGHT DATA", &fp);
-        f_res = f_write(&fp, flight_data, sizeof(flight_data), bw);
+        // write headers
+        f_res = f_puts(
+            "pressure,altitude,temperature,raw_accel_x,raw_accel_y,raw_"
+            "accel_z,raw_gyro_x,raw_gyro_y,raw_gyro_z,voltage,current,soc\n",
+            &fp);
+        char init_write_buffer[64] = {0};
+        // write inital data
+        sprintf(init_write_buffer,
+                "%d,%d,%d,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%d,%d,%d\n",
+                (int)init_data[0], (int)init_data[1], (int)init_data[2],
+                init_data[3], init_data[4], init_data[5], init_data[6],
+                init_data[7], init_data[8], (int)init_data[9],
+                (int)init_data[10], (int)init_data[11]);
 
-        if (f_res == FR_OK) {
-          // turn on LED to show successful flight
-          HAL_GPIO_WritePin(STS_LED_GPIO_Port, STS_LED_Pin, GPIO_PIN_SET);
+        f_res = f_puts(init_write_buffer, &fp);
+        // only write data we have actually captured
+        for (uint16_t i = 0; i <= sample_point; i++) {
+          char flight_write_buffer[64] = {0};
+          sprintf(flight_write_buffer,
+                  "%d,%d,%d,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%d,%d,%d\n",
+                  (int)flight_data[i][0], (int)flight_data[i][1],
+                  (int)flight_data[i][2], flight_data[i][3], flight_data[i][4],
+                  flight_data[i][5], flight_data[i][6], flight_data[i][7],
+                  flight_data[i][8], (int)flight_data[i][9],
+                  (int)flight_data[i][10], (int)flight_data[i][11]);
+
+          f_res = f_puts(flight_write_buffer, &fp);
         }
+
+        // turn on LED to show successful flight
+        HAL_GPIO_WritePin(STS_LED_GPIO_Port, STS_LED_Pin, GPIO_PIN_SET);
       }
+      f_close(&fp);
+
+      LSM6XX_disable_ff();
+      flight_state = DIAG;
 
       break;
     }

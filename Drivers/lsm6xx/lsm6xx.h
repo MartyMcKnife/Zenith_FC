@@ -285,6 +285,12 @@ LSM6XX_STATES LSM6XX_set_ff(LSM6XX_INT int_line, LSM6XX_FF_THRES ff_thres,
                             uint8_t duration);
 
 /**
+ * @brief  Disables the free fall (FF) interrupt mask on the IMU
+ * @retval void
+ */
+void LSM6XX_disable_ff();
+
+/**
  * @brief  Calibrates both accel and gyroscope values. This only has to be done
  * once Testing should be done when connected to a debugger. The code will ask
  * you to place the IMU on each axis, to record a baseline This is then stored
@@ -318,8 +324,6 @@ LSM6XX_STATES LSM6XX_get_accel(LSM6XX_DATA *buf);
  *           - OK: Data OKfully returned
  */
 LSM6XX_STATES LSM6XX_get_gyro(LSM6XX_DATA *buf);
-
-uint8_t free_fall_detect();
 
 #ifdef __cplusplus
 }
