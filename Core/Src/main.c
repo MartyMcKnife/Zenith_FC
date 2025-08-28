@@ -77,6 +77,10 @@ uint16_t sample_point = 0;
 bool take_sample = false;
 uint8_t flight_no = 0;
 
+uint32_t avg_height;
+uint32_t sq_values;
+uint32_t height_sd;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -186,12 +190,12 @@ int main(void) {
   }
 
   // bq27441 needs to learn battery usage, give a sec
-  HAL_Delay(50);
+  HAL_Delay(100);
 
   // if battery not charged enough, flash warning
   // not enough to trigger fail mode but we want to let user know
   if (BQ27441_soc(FILTERED) < 70) {
-    blink_short(5);
+    blink_short(2);
   }
 
   // mount fs
@@ -232,6 +236,11 @@ int main(void) {
 
   init_samples(init_data);
 
+  // init success
+  if (flight_state == PRE_LAUNCH) {
+    blink_short(5);
+  }
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -240,15 +249,79 @@ int main(void) {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    switch (flight_state) {
+      // something is wrong - just blink LED
+      // blocking blink is fine
+    case INIT_FAILURE:
+      HAL_GPIO_TogglePin(STS_LED_GPIO_Port, STS_LED_Pin);
+      HAL_Delay(250);
+      break;
 
-    // sample every 100ms, when we are flying
-    // triggered by timers
-    if (flight_state == LAUNCH && take_sample) {
-      // turn on LED whilst we are sampling
-      HAL_GPIO_WritePin(STS_LED_GPIO_Port, STS_LED_Pin, GPIO_PIN_SET);
-      collect_samples(flight_data[sample_point], (uint32_t)init_data[0]);
-      sample_point += 1;
-      HAL_GPIO_WritePin(STS_LED_GPIO_Port, STS_LED_Pin, GPIO_PIN_RESET);
+      // don't do anything in prelaunch - just waiting for IMU to say we are
+      // flying
+    case PRE_LAUNCH:
+      break;
+
+      // handle sampling
+    case LAUNCH:
+      if (take_sample) {
+        // turn on LED whilst we are sampling
+        HAL_GPIO_WritePin(STS_LED_GPIO_Port, STS_LED_Pin, GPIO_PIN_SET);
+        collect_samples(flight_data[sample_point], (uint32_t)init_data[0]);
+        HAL_GPIO_WritePin(STS_LED_GPIO_Port, STS_LED_Pin, GPIO_PIN_RESET);
+        take_sample = false;
+
+        // check to see if we have landed
+        // landed is determined when current height sample is within 1 s.d. of
+        // average height of last 5 samples
+        if (sample_point >= 6) {
+          // calculate average
+          // get last 5 samples
+          for (uint8_t i = 0; i < 5; i++) {
+            avg_height += flight_data[sample_point - 1 - i][1];
+          }
+
+          avg_height /= 5;
+
+          // calculate s.d.
+          for (uint8_t i = 0; i < 5; i++) {
+            sq_values +=
+                pow(flight_data[sample_point - 1 - i][1] - avg_height, 2);
+          }
+
+          height_sd = sqrt(sq_values / 5);
+
+          // if current reading is inside +- 1s.d., switch to landing
+          if (abs(flight_data[sample_point][1] - avg_height) <= height_sd) {
+            flight_state = LANDING;
+            break;
+          }
+        }
+
+        sample_point += 1;
+      }
+
+      break;
+
+    // landing state caused by flight array overflow or successful detection,
+    // whichever comes first
+    case LANDING:
+      char fp_name[13];
+      sprintf(fp_name, "fl_%02d.csv", flight_no);
+      f_res = f_open(&fp, fp_name, FA_CREATE_ALWAYS | FA_WRITE);
+      if (f_res == FR_OK) {
+        f_puts("INIT DATA", &fp);
+        f_write(&fp, init_data, sizeof(init_data), bw);
+        f_puts("FLIGHT DATA", &fp);
+        f_res = f_write(&fp, flight_data, sizeof(flight_data), bw);
+
+        if (f_res == FR_OK) {
+          // turn on LED to show successful flight
+          HAL_GPIO_WritePin(STS_LED_GPIO_Port, STS_LED_Pin, GPIO_PIN_SET);
+        }
+      }
+
+      break;
     }
   }
   /* USER CODE END 3 */
