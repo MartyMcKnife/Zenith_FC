@@ -230,7 +230,7 @@ int main(void) {
 
   // get initial readings
 
-  avg_samples(&init_data);
+  init_samples(init_data);
 
   /* USER CODE END 2 */
 
@@ -246,7 +246,7 @@ int main(void) {
     if (flight_state == LAUNCH && take_sample) {
       // turn on LED whilst we are sampling
       HAL_GPIO_WritePin(STS_LED_GPIO_Port, STS_LED_Pin, GPIO_PIN_SET);
-
+      collect_samples(flight_data[sample_point], (uint32_t)init_data[0]);
       sample_point += 1;
       HAL_GPIO_WritePin(STS_LED_GPIO_Port, STS_LED_Pin, GPIO_PIN_RESET);
     }
