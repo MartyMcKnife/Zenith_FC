@@ -180,7 +180,7 @@ int main(void) {
     LSM6XX_calibrate(&cal_set);
 
     // TODO: Make sure triggers correctly for ignition
-    LSM6XX_set_ff(INT1, LSM_FF_500, 3);
+    LSM6XX_set_ff(INT1, LSM_FF_500, 10);
   }
 
   BQ27441_ctx_t BQ27441 = {
