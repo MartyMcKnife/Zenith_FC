@@ -50,6 +50,7 @@ typedef enum {
 #define BATTERY_CAPACITY 1100
 #define MIN_VOLTAGE 2500
 #define MAX_VOLTAGE 4300
+#define AVG_SAMPLE_COUNT 5
 /* USER CODE END EC */
 
 /* Exported macro ------------------------------------------------------------*/
@@ -71,12 +72,6 @@ void Error_Handler(void);
 #define SPI1_CS_GPIO_Port GPIOB
 #define SPI2_CS_Pin GPIO_PIN_11
 #define SPI2_CS_GPIO_Port GPIOB
-#define IMU_INT1_Pin GPIO_PIN_13
-#define IMU_INT1_GPIO_Port GPIOB
-#define IMU_INT1_EXTI_IRQn EXTI4_15_IRQn
-#define IMU_INT2_Pin GPIO_PIN_15
-#define IMU_INT2_GPIO_Port GPIOB
-#define IMU_INT2_EXTI_IRQn EXTI4_15_IRQn
 #define STS_LED_Pin GPIO_PIN_8
 #define STS_LED_GPIO_Port GPIOA
 

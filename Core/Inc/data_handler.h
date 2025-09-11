@@ -6,10 +6,15 @@ extern "C" {
 
 #include "stdint.h"
 
-#define AVG_SAMPLE_COUNT 5
+void collect_samples(float *data_ptr, uint32_t ref_pres, uint32_t start_flight);
+void collect_init_samples(float *data_ptr);
+void average_init_samples(float *data_ptr, uint8_t samples);
+void clear_samples(float *data_ptr);
 
-void collect_samples(float *data_ptr, uint32_t ref_pres);
-void init_samples(float *data_ptr);
+float calc_average(float (*data_ptr)[14], uint8_t data_point, uint8_t offset,
+                   uint8_t window_size);
+float calc_sd(float (*data_ptr)[14], float mean, uint8_t data_point,
+              uint8_t offset, uint8_t window_size);
 
 #ifdef __cplusplus
 }

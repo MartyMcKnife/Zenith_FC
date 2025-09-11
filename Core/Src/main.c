@@ -52,8 +52,10 @@ I2C_HandleTypeDef hi2c2;
 SPI_HandleTypeDef hspi1;
 SPI_HandleTypeDef hspi2;
 
+TIM_HandleTypeDef htim7;
 TIM_HandleTypeDef htim14;
 TIM_HandleTypeDef htim16;
+TIM_HandleTypeDef htim17;
 
 /* USER CODE BEGIN PV */
 FLIGHT_STATES flight_state = PRE_LAUNCH;
@@ -69,10 +71,13 @@ static bool enable_led = false;
 // if we run out of space flush to csv and start again
 
 // data stored:
-// | pressure | altitude | temperature | raw_accel_x | raw_accel_y | raw_accel_z
-// | raw_gyro_x | raw_gyro_y | raw_gyro_z | voltage | current | soc |
-static float init_data[12] = {0};
-static float flight_data[1800][12] = {0};
+// | start_sample_time | end_sample_time | pressure | altitude | temperature |
+// raw_accel_x | raw_accel_y | raw_accel_z | raw_gyro_x | raw_gyro_y |
+// raw_gyro_z | voltage | current | soc |
+static float init_data[14] = {0};
+static float last_init_data[14] = {0};
+static float flight_data[1800][14] = {0};
+static float moving_sample_window[5][14] = {0};
 uint16_t sample_point = 0;
 bool take_sample = false;
 uint8_t flight_no = 0;
@@ -80,6 +85,8 @@ uint8_t flight_no = 0;
 float avg_height;
 float sq_values;
 float height_sd;
+
+uint32_t start_flight_time = 0;
 
 /* USER CODE END PV */
 
@@ -92,6 +99,8 @@ static void MX_SPI1_Init(void);
 static void MX_SPI2_Init(void);
 static void MX_TIM14_Init(void);
 static void MX_TIM16_Init(void);
+static void MX_TIM7_Init(void);
+static void MX_TIM17_Init(void);
 /* USER CODE BEGIN PFP */
 static int16_t BQ27441_i2cWriteBytes(uint8_t DevAddress, uint8_t subAddress,
                                      uint8_t *src, uint8_t count);
@@ -146,6 +155,8 @@ int main(void) {
   MX_USB_Device_Init();
   MX_TIM14_Init();
   MX_TIM16_Init();
+  MX_TIM7_Init();
+  MX_TIM17_Init();
   /* USER CODE BEGIN 2 */
 
   // if we've connected a USB, don't worry about anything
@@ -289,7 +300,8 @@ int main(void) {
       if (take_sample) {
         // turn on LED whilst we are sampling
         HAL_GPIO_WritePin(STS_LED_GPIO_Port, STS_LED_Pin, GPIO_PIN_SET);
-        collect_samples(flight_data[sample_point], (uint32_t)init_data[0]);
+        collect_samples(flight_data[sample_point], (uint32_t)init_data[0],
+                        start_flight_time);
         HAL_GPIO_WritePin(STS_LED_GPIO_Port, STS_LED_Pin, GPIO_PIN_RESET);
         take_sample = false;
 
@@ -300,22 +312,8 @@ int main(void) {
         height_sd = 0;
         if (sample_point >= 6) {
           // calculate average
-          // get last 5 samples
-          for (uint8_t i = 0; i < 5; i++) {
-
-            avg_height += (int32_t)flight_data[sample_point - 1 - i][1];
-            ;
-          }
-
-          avg_height /= 5;
-
-          // calculate s.d.
-          for (uint8_t i = 0; i < 5; i++) {
-            sq_values += pow(
-                (int32_t)flight_data[sample_point - 1 - i][1] - avg_height, 2);
-          }
-
-          height_sd = sqrt(sq_values / 5);
+          avg_height = calc_average(flight_data, 3, sample_point - 1, 5);
+          height_sd = calc_sd(flight_data, avg_height, 3, sample_point - 1, 5);
 
           // if current reading is inside +- 1s.d., switch to landing
           if (fabs((int32_t)flight_data[sample_point][1] - avg_height) <=
@@ -335,32 +333,56 @@ int main(void) {
     case LANDING:
       sprintf(fp_name, "fl_%02d.csv", flight_no);
       f_res = f_open(&fp, fp_name, FA_CREATE_ALWAYS | FA_WRITE);
+      // code to write data is really lazy and could be improved
+      // works well enough
       if (f_res == FR_OK) {
         // write headers
         f_res = f_puts(
-            "pressure,altitude,temperature,raw_accel_x,raw_accel_y,raw_"
+            "start_sample_time,end_sample_time,pressure,altitude,temperature,"
+            "raw_accel_x,raw_accel_y,raw_"
             "accel_z,raw_gyro_x,raw_gyro_y,raw_gyro_z,voltage,current,soc\n",
             &fp);
         char init_write_buffer[64] = {0};
         // write inital data
         sprintf(init_write_buffer,
-                "%d,%d,%d,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%d,%d,%d\n",
+                "%d,%d,%d,%d,%d,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%d,%d,%d\n",
                 (int)init_data[0], (int)init_data[1], (int)init_data[2],
-                init_data[3], init_data[4], init_data[5], init_data[6],
-                init_data[7], init_data[8], (int)init_data[9],
-                (int)init_data[10], (int)init_data[11]);
+                (int)init_data[3], init_data[4], init_data[5], init_data[6],
+                init_data[7], init_data[8], init_data[9], (int)init_data[10],
+                (int)init_data[11], (int)init_data[12], (int)init_data[13]);
 
         f_res = f_puts(init_write_buffer, &fp);
+        // write the moving window - this represents data captured right before
+        // launch detected
+        for (uint8_t i = 0; i < 5; i++) {
+          char flight_write_buffer[64] = {0};
+          sprintf(flight_write_buffer,
+                  "%d,%d,%d,%d,%d,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%d,%d,%d\n",
+                  (int)moving_sample_window[i][0],
+                  (int)moving_sample_window[i][1],
+                  (int)moving_sample_window[i][2],
+                  (int)moving_sample_window[i][3], moving_sample_window[i][4],
+                  moving_sample_window[i][5], moving_sample_window[i][6],
+                  moving_sample_window[i][7], moving_sample_window[i][8],
+                  moving_sample_window[i][9], (int)moving_sample_window[i][10],
+                  (int)moving_sample_window[i][11],
+                  (int)moving_sample_window[i][12],
+                  (int)moving_sample_window[i][13]);
+
+          f_res = f_puts(flight_write_buffer, &fp);
+        }
+
         // only write data we have actually captured
         for (uint16_t i = 0; i <= sample_point; i++) {
           char flight_write_buffer[64] = {0};
           sprintf(flight_write_buffer,
-                  "%d,%d,%d,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%d,%d,%d\n",
+                  "%d,%d,%d,%d,%d,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%d,%d,%d\n",
                   (int)flight_data[i][0], (int)flight_data[i][1],
-                  (int)flight_data[i][2], flight_data[i][3], flight_data[i][4],
-                  flight_data[i][5], flight_data[i][6], flight_data[i][7],
-                  flight_data[i][8], (int)flight_data[i][9],
-                  (int)flight_data[i][10], (int)flight_data[i][11]);
+                  (int)flight_data[i][2], (int)flight_data[i][3],
+                  flight_data[i][4], flight_data[i][5], flight_data[i][6],
+                  flight_data[i][7], flight_data[i][8], flight_data[i][9],
+                  (int)flight_data[i][10], (int)flight_data[i][11],
+                  (int)flight_data[i][12], (int)flight_data[i][13]);
 
           f_res = f_puts(flight_write_buffer, &fp);
         }
@@ -585,6 +607,40 @@ static void MX_SPI2_Init(void) {
 }
 
 /**
+ * @brief TIM7 Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_TIM7_Init(void) {
+
+  /* USER CODE BEGIN TIM7_Init 0 */
+
+  /* USER CODE END TIM7_Init 0 */
+
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM7_Init 1 */
+
+  /* USER CODE END TIM7_Init 1 */
+  htim7.Instance = TIM7;
+  htim7.Init.Prescaler = 7;
+  htim7.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim7.Init.Period = 39999;
+  htim7.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim7) != HAL_OK) {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim7, &sMasterConfig) != HAL_OK) {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM7_Init 2 */
+
+  /* USER CODE END TIM7_Init 2 */
+}
+
+/**
  * @brief TIM14 Initialization Function
  * @param None
  * @retval None
@@ -642,6 +698,35 @@ static void MX_TIM16_Init(void) {
 }
 
 /**
+ * @brief TIM17 Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_TIM17_Init(void) {
+
+  /* USER CODE BEGIN TIM17_Init 0 */
+
+  /* USER CODE END TIM17_Init 0 */
+
+  /* USER CODE BEGIN TIM17_Init 1 */
+
+  /* USER CODE END TIM17_Init 1 */
+  htim17.Instance = TIM17;
+  htim17.Init.Prescaler = 1023;
+  htim17.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim17.Init.Period = 62499;
+  htim17.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim17.Init.RepetitionCounter = 0;
+  htim17.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim17) != HAL_OK) {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM17_Init 2 */
+
+  /* USER CODE END TIM17_Init 2 */
+}
+
+/**
  * @brief GPIO Initialization Function
  * @param None
  * @retval None
@@ -675,22 +760,12 @@ static void MX_GPIO_Init(void) {
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : IMU_INT1_Pin IMU_INT2_Pin */
-  GPIO_InitStruct.Pin = IMU_INT1_Pin | IMU_INT2_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
   /*Configure GPIO pin : STS_LED_Pin */
   GPIO_InitStruct.Pin = STS_LED_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(STS_LED_GPIO_Port, &GPIO_InitStruct);
-
-  /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI4_15_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI4_15_IRQn);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
@@ -729,46 +804,68 @@ static void blink_long(uint8_t count) {
   enable_led = true;
   HAL_TIM_Base_Start_IT(&htim16);
 }
-
-// Interrupt handler for IMU INT1
-void HAL_GPIO_EXTI_Rising_Callback(uint16_t GPIO_Pin) {
-  // interrupt detected
-  if (GPIO_Pin == IMU_INT1_Pin && flight_state != INIT_FAILURE) {
-    flight_state = LAUNCH;
-    sample_point = 0;
-    HAL_TIM_Base_Start_IT(&htim14);
-  }
-  __NOP();
-}
-
 // interrupt handler for timers
-// LED pulse time controlled by timers - TIM14 is 100ms, TIM16 is 500ms
-// TIM14 also handles setting sensor_update flag
+// timers configured as follows:
+// TIM7 - 5ms
+// TIM14 - 100ms
+// TIM16 - 500ms
+// TIM17 - 1s
+// LED pulse time controlled by timers - TIM14 is 100ms (short), TIM16 is 500ms
+// (long) TIM7 handles updating initial samples TIM17 handles reset period for
+// initial samples
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
   // handle LED blinking
-  if (enable_led) {
-    // one pulse needs both on and off
-    // double the amount of pulses we want
-    // led_count is 0-indexed
-    if (led_count <= led_total * 2 - 1) {
-      HAL_GPIO_TogglePin(STS_LED_GPIO_Port, STS_LED_Pin);
-      led_count++;
-    } else {
-      // reset timer
-      led_total = 0;
-      led_count = 0;
-      enable_led = false;
-      // CAREFUL - only disable this timer when we aren't flying
-      // otherwise we stop our samples :/
-      // 500ms timer always disabled
-      if (htim == &htim16 || flight_state != LAUNCH) {
-        HAL_TIM_Base_Stop_IT(htim);
+  if (htim == &htim14 || htim == &htim16) {
+    if (enable_led) {
+      // one pulse needs both on and off
+      // double the amount of pulses we want
+      // led_count is 0-indexed
+      if (led_count <= led_total * 2 - 1) {
+        HAL_GPIO_TogglePin(STS_LED_GPIO_Port, STS_LED_Pin);
+        led_count++;
+      } else {
+        // reset timer
+        led_total = 0;
+        led_count = 0;
+        enable_led = false;
+        // CAREFUL - only disable this timer when we aren't flying
+        // otherwise we stop our samples :/
+        // 500ms timer always disabled
+        if (flight_state != LAUNCH) {
+          HAL_TIM_Base_Stop_IT(htim);
+        }
       }
     }
   }
-  // if we are currently flying, take a sample
-  if (flight_state == LAUNCH) {
+
+  // if we are sampling data and not currently flying (incase we forget to turn
+  // off the timer)
+  if (htim == &htim7 && flight_state == PRE_LAUNCH) {
+    if (sample_point < AVG_SAMPLE_COUNT) {
+      collect_init_samples(init_data);
+      sample_point++;
+    } else {
+      // collected enough samples - average them
+      sample_point = 0;
+      average_init_samples(init_data, AVG_SAMPLE_COUNT);
+      HAL_TIM_Base_Stop_IT(&htim7);
+      // start count down to reset initial samples
+      HAL_TIM_Base_Start_IT(&htim17);
+    }
+  }
+
+  // if we want to reset initial samples
+  if (htim == &htim17 && flight_state == PRE_LAUNCH) {
+    // if we start flying mid sample, we want a reference to the old one
+    memcpy(last_init_data, init_data, sizeof(init_data));
+    clear_samples(init_data);
+    sample_point = 0;
+    HAL_TIM_Base_Start_IT(&htim17);
+  }
+
+  // take sample if we are in the air
+  if (htim == &htim14 && flight_state == LAUNCH) {
     take_sample = true;
   }
 }
