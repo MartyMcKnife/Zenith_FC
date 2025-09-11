@@ -260,8 +260,6 @@ int main(void) {
 
   // get initial readings
 
-  init_samples(init_data);
-
   // init success
   if (flight_state == PRE_LAUNCH) {
     blink_short(2);
@@ -347,27 +345,27 @@ int main(void) {
         sprintf(init_write_buffer,
                 "%d,%d,%d,%d,%d,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%d,%d,%d\n",
                 (int)init_data[0], (int)init_data[1], (int)init_data[2],
-                (int)init_data[3], init_data[4], init_data[5], init_data[6],
-                init_data[7], init_data[8], init_data[9], (int)init_data[10],
-                (int)init_data[11], (int)init_data[12], (int)init_data[13]);
+                (int)init_data[3], (int)init_data[4], init_data[5],
+                init_data[6], init_data[7], init_data[8], init_data[9],
+                init_data[10], (int)init_data[11], (int)init_data[12],
+                (int)init_data[13]);
 
         f_res = f_puts(init_write_buffer, &fp);
         // write the moving window - this represents data captured right before
         // launch detected
         for (uint8_t i = 0; i < 5; i++) {
           char flight_write_buffer[64] = {0};
-          sprintf(flight_write_buffer,
-                  "%d,%d,%d,%d,%d,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%d,%d,%d\n",
-                  (int)moving_sample_window[i][0],
-                  (int)moving_sample_window[i][1],
-                  (int)moving_sample_window[i][2],
-                  (int)moving_sample_window[i][3], moving_sample_window[i][4],
-                  moving_sample_window[i][5], moving_sample_window[i][6],
-                  moving_sample_window[i][7], moving_sample_window[i][8],
-                  moving_sample_window[i][9], (int)moving_sample_window[i][10],
-                  (int)moving_sample_window[i][11],
-                  (int)moving_sample_window[i][12],
-                  (int)moving_sample_window[i][13]);
+          sprintf(
+              flight_write_buffer,
+              "%d,%d,%d,%d,%d,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%d,%d,%d\n",
+              (int)moving_sample_window[i][0], (int)moving_sample_window[i][1],
+              (int)moving_sample_window[i][2], (int)moving_sample_window[i][3],
+              (int)moving_sample_window[i][4], moving_sample_window[i][5],
+              moving_sample_window[i][6], moving_sample_window[i][7],
+              moving_sample_window[i][8], moving_sample_window[i][9],
+              moving_sample_window[i][10], (int)moving_sample_window[i][11],
+              (int)moving_sample_window[i][12],
+              (int)moving_sample_window[i][13]);
 
           f_res = f_puts(flight_write_buffer, &fp);
         }
@@ -379,9 +377,9 @@ int main(void) {
                   "%d,%d,%d,%d,%d,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%d,%d,%d\n",
                   (int)flight_data[i][0], (int)flight_data[i][1],
                   (int)flight_data[i][2], (int)flight_data[i][3],
-                  flight_data[i][4], flight_data[i][5], flight_data[i][6],
+                  (int)flight_data[i][4], flight_data[i][5], flight_data[i][6],
                   flight_data[i][7], flight_data[i][8], flight_data[i][9],
-                  (int)flight_data[i][10], (int)flight_data[i][11],
+                  flight_data[i][10], (int)flight_data[i][11],
                   (int)flight_data[i][12], (int)flight_data[i][13]);
 
           f_res = f_puts(flight_write_buffer, &fp);
