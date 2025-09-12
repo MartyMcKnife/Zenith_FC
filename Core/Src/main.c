@@ -77,17 +77,23 @@ static bool enable_led = false;
 static float init_data[14] = {0};
 static float last_init_data[14] = {0};
 static float flight_data[1800][14] = {0};
-static float moving_sample_window[5][14] = {0};
+static float moving_sample_window[6][14] = {0};
+static float moving_sample_window_instant[14] = {0};
 uint16_t sample_point = 0;
 uint16_t moving_sample_point = 0;
 bool take_sample = false;
+bool init_sample = false;
+bool init_complete = false;
 uint8_t flight_no = 0;
 
 float avg_height;
-float sq_values;
 float height_sd;
 
+float avg_accel_y;
+float accel_y_sd;
+
 uint32_t start_flight_time = 0;
+uint32_t start_pre_launch_time = 0;
 
 /* USER CODE END PV */
 
@@ -261,10 +267,15 @@ int main(void) {
 
   // get initial readings
   HAL_TIM_Base_Start_IT(&htim7);
-  HAL_TIM_Base_Start_IT(&htim17);
   // wait until we have enough samples for intial reading
-  while (sample_point < AVG_SAMPLE_COUNT) {
-    __NOP();
+  while (init_complete == false) {
+    if (init_sample) {
+      HAL_TIM_Base_Stop_IT(&htim7);
+      collect_init_samples(init_data, HAL_GetTick());
+      init_sample = false;
+      sample_point++;
+      HAL_TIM_Base_Start_IT(&htim7);
+    }
   }
 
   // start timer 14 to take sample every 100ms - for both prelaunch and launch
@@ -273,6 +284,7 @@ int main(void) {
   // init success
   if (flight_state == PRE_LAUNCH) {
     blink_short(2);
+    start_pre_launch_time = HAL_GetTick();
   }
 
   /* USER CODE END 2 */
@@ -283,10 +295,22 @@ int main(void) {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+
+    // check to see if we need to take another initial sample
+    if (init_sample) {
+      HAL_TIM_Base_Stop_IT(&htim7);
+      collect_init_samples(init_data, HAL_GetTick());
+      init_sample = false;
+      sample_point++;
+      HAL_TIM_Base_Start_IT(&htim7);
+    }
+
     switch (flight_state) {
       // something is wrong - just blink LED
       // blocking blink is fine
     case INIT_FAILURE:
+      HAL_TIM_Base_Stop_IT(&htim7);
+      HAL_TIM_Base_Stop_IT(&htim17);
       HAL_GPIO_TogglePin(STS_LED_GPIO_Port, STS_LED_Pin);
       HAL_Delay(500);
       break;
@@ -295,7 +319,45 @@ int main(void) {
       // if pressure and accel_y increase by 1 s.d., we have a launch
       // moving average window is written to csv to capture pre-launch values
     case PRE_LAUNCH:
-      __NOP();
+      // keep filling up our window
+      if (take_sample == true) {
+        collect_samples(moving_sample_window_instant, last_init_data[2],
+                        start_pre_launch_time);
+        add_sample(moving_sample_window, moving_sample_window_instant);
+        // prevent overflowing int
+        if (moving_sample_point < 6) {
+          moving_sample_point += 1;
+        }
+      }
+
+      // if we have enough samples to start testing for launch conditions
+      if (moving_sample_point >= 6) {
+        avg_height = calc_average(moving_sample_window, 2, 6, 5);
+        height_sd = calc_sd(moving_sample_window, avg_height, 2, 6, 5);
+
+        avg_accel_y = calc_average(moving_sample_window, 6, 6, 5);
+        accel_y_sd = calc_sd(moving_sample_window, avg_accel_y, 6, 6, 5);
+
+        // if both height and accel above 1 s.d., launch has beend detect.
+        // switch modes
+        if (fabs((int32_t)moving_sample_window[0][2] - avg_height) >=
+                height_sd &&
+            fabs((int32_t)moving_sample_window[0][6] - avg_accel_y) >=
+                accel_y_sd) {
+          // reset samples
+          sample_point = 0;
+          // stop timers for init sampling
+          HAL_TIM_Base_Stop_IT(&htim7);
+          HAL_TIM_Base_Stop_IT(&htim17);
+          // clear avg height s.d.
+          avg_height = 0;
+          height_sd = 0;
+          // set to flight
+          start_flight_time = HAL_GetTick();
+          flight_state = LAUNCH;
+        }
+      }
+
       break;
 
     // don't do anything when we are reading data
@@ -309,7 +371,7 @@ int main(void) {
       if (take_sample) {
         // turn on LED whilst we are sampling
         HAL_GPIO_WritePin(STS_LED_GPIO_Port, STS_LED_Pin, GPIO_PIN_SET);
-        collect_samples(flight_data[sample_point], (uint32_t)init_data[0],
+        collect_samples(flight_data[sample_point], (uint32_t)last_init_data[2],
                         start_flight_time);
         HAL_GPIO_WritePin(STS_LED_GPIO_Port, STS_LED_Pin, GPIO_PIN_RESET);
         take_sample = false;
@@ -325,7 +387,7 @@ int main(void) {
           height_sd = calc_sd(flight_data, avg_height, 3, sample_point - 1, 5);
 
           // if current reading is inside +- 1s.d., switch to landing
-          if (fabs((int32_t)flight_data[sample_point][1] - avg_height) <=
+          if (fabs((int32_t)flight_data[sample_point][3] - avg_height) <=
               height_sd) {
             flight_state = LANDING;
             break;
@@ -364,7 +426,8 @@ int main(void) {
         f_res = f_puts(init_write_buffer, &fp);
         // write the moving window - this represents data captured right before
         // launch detected
-        for (uint8_t i = 0; i < 5; i++) {
+        // write this backwards as index 0 - newest, index 6 - oldest
+        for (int8_t i = 5; i >= 0; i--) {
           char flight_write_buffer[64] = {0};
           sprintf(
               flight_write_buffer,
@@ -815,7 +878,7 @@ static void blink_long(uint8_t count) {
 }
 // interrupt handler for timers
 // timers configured as follows:
-// TIM7 - 5ms
+// TIM7 - 20ms
 // TIM14 - 100ms
 // TIM16 - 500ms
 // TIM17 - 1s
@@ -851,26 +914,28 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
   // if we are sampling data and not currently flying (incase we forget to turn
   // off the timer)
   if (htim == &htim7 && flight_state == PRE_LAUNCH) {
-    if (sample_point < AVG_SAMPLE_COUNT) {
-      collect_init_samples(init_data);
-      sample_point++;
+    if (sample_point < (AVG_SAMPLE_COUNT)) {
+      init_sample = true;
+
     } else {
       // collected enough samples - average them
       average_init_samples(init_data, AVG_SAMPLE_COUNT);
+      init_complete = true;
+      // if we start flying mid sample, we want a reference to the old one
+      memcpy(last_init_data, init_data, sizeof(init_data));
       HAL_TIM_Base_Stop_IT(&htim7);
       // start count down to reset initial samples
       HAL_TIM_Base_Start_IT(&htim17);
+      // clear sample reinit
     }
   }
 
   // if we want to reset initial samples
   if (htim == &htim17 && flight_state == PRE_LAUNCH) {
-    // if we start flying mid sample, we want a reference to the old one
-    memcpy(last_init_data, init_data, sizeof(init_data));
     clear_samples(init_data);
     sample_point = 0;
     HAL_TIM_Base_Start_IT(&htim7);
-    HAL_TIM_BASE_Stop_IT(&htim17);
+    HAL_TIM_Base_Stop_IT(&htim17);
   }
 
   // take sample if we are sampling

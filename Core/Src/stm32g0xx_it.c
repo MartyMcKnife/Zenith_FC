@@ -56,8 +56,10 @@
 
 /* External variables --------------------------------------------------------*/
 extern PCD_HandleTypeDef hpcd_USB_DRD_FS;
+extern TIM_HandleTypeDef htim7;
 extern TIM_HandleTypeDef htim14;
 extern TIM_HandleTypeDef htim16;
+extern TIM_HandleTypeDef htim17;
 /* USER CODE BEGIN EV */
 
 /* USER CODE END EV */
@@ -157,6 +159,20 @@ void USB_UCPD1_2_IRQHandler(void)
 }
 
 /**
+  * @brief This function handles TIM7 and LPTIM2 global Interrupt.
+  */
+void TIM7_LPTIM2_IRQHandler(void)
+{
+  /* USER CODE BEGIN TIM7_LPTIM2_IRQn 0 */
+
+  /* USER CODE END TIM7_LPTIM2_IRQn 0 */
+  HAL_TIM_IRQHandler(&htim7);
+  /* USER CODE BEGIN TIM7_LPTIM2_IRQn 1 */
+
+  /* USER CODE END TIM7_LPTIM2_IRQn 1 */
+}
+
+/**
   * @brief This function handles TIM14 global interrupt.
   */
 void TIM14_IRQHandler(void)
@@ -182,6 +198,20 @@ void TIM16_FDCAN_IT0_IRQHandler(void)
   /* USER CODE BEGIN TIM16_FDCAN_IT0_IRQn 1 */
 
   /* USER CODE END TIM16_FDCAN_IT0_IRQn 1 */
+}
+
+/**
+  * @brief This function handles TIM17, FDCAN1_IT1 and FDCAN2_IT1 Interrupt.
+  */
+void TIM17_FDCAN_IT1_IRQHandler(void)
+{
+  /* USER CODE BEGIN TIM17_FDCAN_IT1_IRQn 0 */
+
+  /* USER CODE END TIM17_FDCAN_IT1_IRQn 0 */
+  HAL_TIM_IRQHandler(&htim17);
+  /* USER CODE BEGIN TIM17_FDCAN_IT1_IRQn 1 */
+
+  /* USER CODE END TIM17_FDCAN_IT1_IRQn 1 */
 }
 
 /* USER CODE BEGIN 1 */

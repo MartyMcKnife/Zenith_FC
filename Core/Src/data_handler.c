@@ -47,7 +47,7 @@ void collect_samples(float *data_ptr, uint32_t ref_pres,
   data_ptr[13] = soc;
 }
 
-void collect_init_samples(float *data_ptr) {
+void collect_init_samples(float *data_ptr, uint32_t ref_time) {
 
   // get pressure for now
   get_temperature(&temperature_handler);
@@ -74,22 +74,36 @@ void collect_init_samples(float *data_ptr) {
   data_ptr[13] += soc;
 
   // sample time should be 0
+  // end sample time will be however long this took
   data_ptr[0] = 0;
-  data_ptr[1] = 0;
+  data_ptr[1] += HAL_GetTick() - ref_time;
   // initial altitude should be 0
   data_ptr[3] = 0;
 }
 
 void average_init_samples(float *data_ptr, uint8_t samples) {
   // average the data
-  for (int i = 0; i < 12; i++) {
+  for (int i = 0; i < 14; i++) {
     data_ptr[i] = data_ptr[i] / samples;
   }
 }
 
 void clear_samples(float *data_ptr) {
-  for (int i = 0; i < 12; i++) {
+  for (int i = 0; i < 14; i++) {
     data_ptr[i] = 0;
+  }
+}
+
+void add_sample(float (*data_ptr)[14], float *newest_data) {
+  for (int i = 5; i > 0; i--) {
+    for (int j = 0; j < 14; j++) {
+      data_ptr[i][j] = data_ptr[i - 1][j];
+    }
+  }
+
+  // Place the newest data (array of 14 floats) at row 0
+  for (int j = 0; j < 14; j++) {
+    data_ptr[0][j] = newest_data[j];
   }
 }
 
