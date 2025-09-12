@@ -79,6 +79,7 @@ static float last_init_data[14] = {0};
 static float flight_data[1800][14] = {0};
 static float moving_sample_window[5][14] = {0};
 uint16_t sample_point = 0;
+uint16_t moving_sample_point = 0;
 bool take_sample = false;
 uint8_t flight_no = 0;
 
@@ -259,6 +260,15 @@ int main(void) {
   }
 
   // get initial readings
+  HAL_TIM_Base_Start_IT(&htim7);
+  HAL_TIM_Base_Start_IT(&htim17);
+  // wait until we have enough samples for intial reading
+  while (sample_point < AVG_SAMPLE_COUNT) {
+    __NOP();
+  }
+
+  // start timer 14 to take sample every 100ms - for both prelaunch and launch
+  HAL_TIM_Base_Start_IT(&htim14);
 
   // init success
   if (flight_state == PRE_LAUNCH) {
@@ -281,8 +291,9 @@ int main(void) {
       HAL_Delay(500);
       break;
 
-      // don't do anything in prelaunch - just waiting for IMU to say we are
-      // flying
+      // constantly update moving average window
+      // if pressure and accel_y increase by 1 s.d., we have a launch
+      // moving average window is written to csv to capture pre-launch values
     case PRE_LAUNCH:
       __NOP();
       break;
@@ -845,7 +856,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
       sample_point++;
     } else {
       // collected enough samples - average them
-      sample_point = 0;
       average_init_samples(init_data, AVG_SAMPLE_COUNT);
       HAL_TIM_Base_Stop_IT(&htim7);
       // start count down to reset initial samples
@@ -859,11 +869,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
     memcpy(last_init_data, init_data, sizeof(init_data));
     clear_samples(init_data);
     sample_point = 0;
-    HAL_TIM_Base_Start_IT(&htim17);
+    HAL_TIM_Base_Start_IT(&htim7);
+    HAL_TIM_BASE_Stop_IT(&htim17);
   }
 
-  // take sample if we are in the air
-  if (htim == &htim14 && flight_state == LAUNCH) {
+  // take sample if we are sampling
+  if (htim == &htim14) {
     take_sample = true;
   }
 }
