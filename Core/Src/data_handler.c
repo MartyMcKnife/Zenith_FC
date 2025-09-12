@@ -128,5 +128,5 @@ float calc_sd(float (*data_ptr)[14], float mean, uint8_t data_point,
     sum_squared_diff += diff * diff;
   }
 
-  return sqrtf(sum_squared_diff / window_size);
+  return sqrtf(sum_squared_diff / (window_size - 1));
 }

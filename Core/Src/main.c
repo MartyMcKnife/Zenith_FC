@@ -321,9 +321,13 @@ int main(void) {
     case PRE_LAUNCH:
       // keep filling up our window
       if (take_sample == true) {
+        HAL_TIM_Base_Stop_IT(&htim14);
         collect_samples(moving_sample_window_instant, last_init_data[2],
                         start_pre_launch_time);
         add_sample(moving_sample_window, moving_sample_window_instant);
+        take_sample = false;
+        HAL_TIM_Base_Start_IT(&htim14);
+
         // prevent overflowing int
         if (moving_sample_point < 6) {
           moving_sample_point += 1;
@@ -332,18 +336,19 @@ int main(void) {
 
       // if we have enough samples to start testing for launch conditions
       if (moving_sample_point >= 6) {
-        avg_height = calc_average(moving_sample_window, 2, 6, 5);
-        height_sd = calc_sd(moving_sample_window, avg_height, 2, 6, 5);
+        avg_height = calc_average(moving_sample_window, 3, 6, 6);
+        height_sd = calc_sd(moving_sample_window, avg_height, 3, 6, 6);
 
-        avg_accel_y = calc_average(moving_sample_window, 6, 6, 5);
-        accel_y_sd = calc_sd(moving_sample_window, avg_accel_y, 6, 6, 5);
+        avg_accel_y = calc_average(moving_sample_window, 6, 6, 6);
+        accel_y_sd = calc_sd(moving_sample_window, avg_accel_y, 6, 6, 6);
 
-        // if both height and accel above 1 s.d., launch has beend detect.
-        // switch modes
-        if (fabs((int32_t)moving_sample_window[0][2] - avg_height) >=
-                height_sd &&
-            fabs((int32_t)moving_sample_window[0][6] - avg_accel_y) >=
-                accel_y_sd) {
+        // if both height and accel above 1.5 s.d., and accel > 1g launch has
+        // beend detect. switch modes
+        float inside_height = fabs(moving_sample_window[0][3] - avg_height);
+        float inside_accel = fabs(moving_sample_window[0][6] - avg_accel_y);
+        if (inside_height >= 1.3 * height_sd &&
+            inside_accel >= 1.7 * accel_y_sd &&
+            fabs(moving_sample_window[0][6]) > 6) {
           // reset samples
           sample_point = 0;
           // stop timers for init sampling
@@ -355,6 +360,7 @@ int main(void) {
           // set to flight
           start_flight_time = HAL_GetTick();
           flight_state = LAUNCH;
+          take_sample = true;
         }
       }
 
@@ -369,6 +375,13 @@ int main(void) {
       // handle sampling
     case LAUNCH:
       if (take_sample) {
+        // overflow
+        if (sample_point > 1800) {
+          HAL_TIM_Base_Stop_IT(&htim14);
+          flight_state = LANDING;
+          take_sample = false;
+        }
+
         // turn on LED whilst we are sampling
         HAL_GPIO_WritePin(STS_LED_GPIO_Port, STS_LED_Pin, GPIO_PIN_SET);
         collect_samples(flight_data[sample_point], (uint32_t)last_init_data[2],
@@ -386,10 +399,13 @@ int main(void) {
           avg_height = calc_average(flight_data, 3, sample_point - 1, 5);
           height_sd = calc_sd(flight_data, avg_height, 3, sample_point - 1, 5);
 
-          // if current reading is inside +- 1s.d., switch to landing
+          // if current reading is inside +- 0.7s.d. (50% of values), switch to
+          // landing
           if (fabs((int32_t)flight_data[sample_point][3] - avg_height) <=
-              height_sd) {
+              0.7 * height_sd) {
             flight_state = LANDING;
+            HAL_TIM_Base_Stop_IT(&htim14);
+            take_sample = false;
             break;
           }
         }
@@ -427,30 +443,35 @@ int main(void) {
         // write the moving window - this represents data captured right before
         // launch detected
         // write this backwards as index 0 - newest, index 6 - oldest
+        // starting time offset
+        uint32_t time_offs = moving_sample_window[5][0];
         for (int8_t i = 5; i >= 0; i--) {
-          char flight_write_buffer[64] = {0};
-          sprintf(
-              flight_write_buffer,
-              "%d,%d,%d,%d,%d,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%d,%d,%d\n",
-              (int)moving_sample_window[i][0], (int)moving_sample_window[i][1],
-              (int)moving_sample_window[i][2], (int)moving_sample_window[i][3],
-              (int)moving_sample_window[i][4], moving_sample_window[i][5],
-              moving_sample_window[i][6], moving_sample_window[i][7],
-              moving_sample_window[i][8], moving_sample_window[i][9],
-              moving_sample_window[i][10], (int)moving_sample_window[i][11],
-              (int)moving_sample_window[i][12],
-              (int)moving_sample_window[i][13]);
+          char flight_write_buffer[72] = {0};
+          sprintf(flight_write_buffer,
+                  "%lu,%lu,%d,%f,%d,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%d,%d,%d\n",
+                  (uint32_t)moving_sample_window[i][0] - time_offs,
+                  (uint32_t)moving_sample_window[i][1] - time_offs,
+                  (int)moving_sample_window[i][2], moving_sample_window[i][3],
+                  (int)moving_sample_window[i][4], moving_sample_window[i][5],
+                  moving_sample_window[i][6], moving_sample_window[i][7],
+                  moving_sample_window[i][8], moving_sample_window[i][9],
+                  moving_sample_window[i][10], (int)moving_sample_window[i][11],
+                  (int)moving_sample_window[i][12],
+                  (int)moving_sample_window[i][13]);
 
           f_res = f_puts(flight_write_buffer, &fp);
         }
 
         // only write data we have actually captured
+        // sample times have offset due to moving sample window
+        time_offs = moving_sample_window[0][0];
         for (uint16_t i = 0; i <= sample_point; i++) {
-          char flight_write_buffer[64] = {0};
+          char flight_write_buffer[72] = {0};
           sprintf(flight_write_buffer,
-                  "%d,%d,%d,%d,%d,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%d,%d,%d\n",
-                  (int)flight_data[i][0], (int)flight_data[i][1],
-                  (int)flight_data[i][2], (int)flight_data[i][3],
+                  "%lu,%lu,%d,%.2f,%d,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%d,%d,%d\n",
+                  (uint32_t)(flight_data[i][0] + time_offs),
+                  (uint32_t)(flight_data[i][1] + time_offs),
+                  (int)flight_data[i][2], flight_data[i][3],
                   (int)flight_data[i][4], flight_data[i][5], flight_data[i][6],
                   flight_data[i][7], flight_data[i][8], flight_data[i][9],
                   flight_data[i][10], (int)flight_data[i][11],
@@ -916,7 +937,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
   if (htim == &htim7 && flight_state == PRE_LAUNCH) {
     if (sample_point < (AVG_SAMPLE_COUNT)) {
       init_sample = true;
-
     } else {
       // collected enough samples - average them
       average_init_samples(init_data, AVG_SAMPLE_COUNT);

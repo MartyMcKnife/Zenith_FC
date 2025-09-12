@@ -70,7 +70,7 @@ typedef struct PRESSURE {
 typedef struct ALTITUDE {
   int32_t temp;
   int32_t pressure;
-  int32_t altitude;
+  float altitude;
 } MS5607_ALTITUDE;
 
 // Public Functions

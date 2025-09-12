@@ -135,7 +135,7 @@ void get_altitude(MS5607_ALTITUDE *altitude, uint32_t baseline_pressure) {
 
   float p0 = (baseline_pressure) / (float)pressure.pressure;
 
-  int32_t height =
+  float height =
       153.84615 * (pow(p0, 0.19) - 1) * ((temperature.temp / 1000) + 273.15);
 
   // check to see if we are in stratosphere - calculation is probably wrong
